@@ -24,6 +24,8 @@ public:
     RunAudit getAudit();
 
 protected:
+    void prepare_();
+    void exec_();
 
     std::filesystem::path executable_;
     std::vector<std::string> args_;

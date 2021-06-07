@@ -4,6 +4,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <iostream>
 
 using namespace std::string_literals;
 
@@ -28,6 +29,42 @@ void Task::start() {
     }
     // child
 
+    prepare_();
+    exec_();
+    // started
+}
+
+void Task::cancel() {
+    throw SandboxError("not implemented");
+}
+
+void Task::await() { // this is an ad-hod impl
+    int status;
+    auto r = waitpid(pid_, &status, 0);
+    if (r < 0) {
+        throw SandboxException("failed to await the task: "s + std::strerror(errno));
+    }
+    if (WIFEXITED(status)) {
+        std::cerr << "exited with code: " << WEXITSTATUS(status) << std::endl;
+    }
+    if (WIFSIGNALED(status)) {
+        std::cerr << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")" << std::endl;
+    }
+    if (WIFSTOPPED(status)) {
+        std::cerr << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")" << std::endl;
+    }
+}
+
+void Task::prepare_() {
+    int flags = CLONE_NEWCGROUP | CLONE_NEWPID | CLONE_NEWIPC;
+    if (constraints_.newNetwork) {
+        flags |= CLONE_NEWNET;
+    }
+    unshare(flags);
+    
+}
+
+void Task::exec_() {
     std::vector<const char*> argv(1 + args_.size() + 1);
     argv[0] = executable_.c_str();
     for (auto i = 0; i < args_.size(); i++) {
@@ -38,22 +75,10 @@ void Task::start() {
     if (res < 0) {
         throw SandboxException("failed to start the task: "s + std::strerror(errno));
     }
-    // started
-}
-
-void Task::cancel() {
-
-}
-
-void Task::await() {
-    auto r = waitpid(pid_, nullptr, 0);
-    if (r < 0) {
-        throw SandboxException("failed to await the task: "s + std::strerror(errno));
-    }
 }
 
 RunAudit Task::getAudit() {
-
+    throw SandboxError("not implemented");
 }
 
 } // namespace sandbox
