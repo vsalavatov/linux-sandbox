@@ -28,6 +28,9 @@ CGroupHandler::CGroupHandler(const char *name) {
 
 CGroupHandler::~CGroupHandler() {
     if (cg_) {
+        if (int res = cgroup_delete_cgroup(cg_, 0); res) {
+            fprintf(stderr, "(Sandbox) Warning: failed to delete cgroup: return code %d", res);
+        }
         cgroup_free(&cg_);
     }
 }
