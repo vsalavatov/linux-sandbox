@@ -34,7 +34,16 @@ struct Options {
             if (arg == "-t" || arg == "--time-limit") {
                 throw SandboxException("unsupported argument: " + arg);
             } else if (arg == "-m" || arg == "--memory-limit") {
-                throw SandboxException("unsupported argument: " + arg);
+                if (i >= argc) {
+                    throw SandboxException("-m option without an argument");
+                }
+                std::stringstream data(argv[i++]);
+                std::size_t limit;
+                data >> limit;
+                if (data.fail()) {
+                    throw SandboxError("-m option expects a numeric argument (bytes)");
+                }
+                opts.memoryLimit = limit;
             } else if (arg == "--new-network") {
                 opts.newNetwork = true;
             } else {

@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <iostream>
+#include <random>
+
 
 using namespace std::string_literals;
 
@@ -19,6 +21,8 @@ Task::Task(std::filesystem::path executable, std::vector<std::string> args, Task
 {}
 
 void Task::start() {
+    prepare_();
+
     int pid = fork();
     if (pid < 0) {
         throw SandboxError("failed to fork: "s + std::strerror(errno));
@@ -28,8 +32,6 @@ void Task::start() {
         return;
     }
     // child
-
-    prepare_();
     exec_();
     // started
 }
@@ -56,12 +58,26 @@ void Task::await() { // this is an ad-hod impl
 }
 
 void Task::prepare_() {
+    unshare_();
+    configure_cgroup_();
+}
+
+void Task::unshare_() {
     int flags = CLONE_NEWCGROUP | CLONE_NEWPID | CLONE_NEWIPC;
     if (constraints_.newNetwork) {
         flags |= CLONE_NEWNET;
     }
     unshare(flags);
+}
+
+void Task::configure_cgroup_() {
+    auto taskId = "sandbox-task-"s + generateTaskId_();
+    cgroupHandler_ = std::make_unique<CGroupHandler>(taskId.c_str());
     
+    if (constraints_.maxMemoryBytes) {
+        cgroupHandler_->limitMemory(*constraints_.maxMemoryBytes);
+    }
+    cgroupHandler_->create();
 }
 
 void Task::exec_() {
@@ -71,6 +87,8 @@ void Task::exec_() {
         argv[1 + i] = args_[i].c_str();
     }
 
+    cgroupHandler_->attach();
+
     auto res = execvp(executable_.c_str(), const_cast<char* const*>(argv.data()));
     if (res < 0) {
         throw SandboxException("failed to start the task: "s + std::strerror(errno));
@@ -79,6 +97,20 @@ void Task::exec_() {
 
 RunAudit Task::getAudit() {
     throw SandboxError("not implemented");
+}
+
+
+std::string Task::generateTaskId_() {
+    static const std::string alphabet = "0123456789abcdef";
+    static const int length = 8;
+    
+    static std::mt19937 gen(time(nullptr));
+    
+    std::string result;
+    for (int i = 0; i < length; i++) {
+        result += alphabet[gen() % alphabet.length()];
+    }
+    return result;
 }
 
 } // namespace sandbox
