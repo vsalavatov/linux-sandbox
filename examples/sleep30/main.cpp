@@ -2,7 +2,11 @@
 #include <unistd.h>
 
 int main() {
-    sleep(30);
-    std::cout << "awaken" << std::endl;
+    for (int i = 0; i < 30; i++) {
+        std::cout << i << " ";
+        std::cout.flush();
+        sleep(1);
+    }
+    std::cout << std::endl << "done" << std::endl;
     return 0;
 }

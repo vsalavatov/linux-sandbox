@@ -13,6 +13,7 @@ struct Options {
     "   [-t|--time-limit <seconds>]\n"
     "   [-m|--memory-limit <bytes>]\n"
     "   [-f|--max-forks <count>]\n"
+    "   [--no-freezer]\n"
     "   [--new-network]\n"
     "   [--libcgroup-verbose]";
 
@@ -23,7 +24,7 @@ struct Options {
     std::optional<std::size_t> maxForks;
     bool newNetwork = false;
     bool libcgroupVerbose = false;
-    
+    bool enableFreezer = true;
 
     static Options fromSysArgs(int argc, char *argv[]) {
         Options opts{};
@@ -39,6 +40,10 @@ struct Options {
             }
             if (arg == "--libcgroup-verbose") {
                 opts.libcgroupVerbose = true;
+                continue;
+            }
+            if (arg == "--no-freezer") {
+                opts.enableFreezer = false;
                 continue;
             }
             if (i >= argc) {
@@ -79,14 +84,16 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    CGroupHandler::libinit();
+
     if (opts.libcgroupVerbose) {
-        sandbox::setLibCGroupLoggerLevel(100000);
+        CGroupHandler::setLibCGroupLoggerLevel(100000);
     }
 
     auto task = Task(
         opts.executable,
         opts.args,
-        TaskConstraints{opts.timeLimit, opts.memoryLimit, opts.maxForks, opts.newNetwork}
+        TaskConstraints{opts.timeLimit, opts.memoryLimit, opts.maxForks, opts.newNetwork, opts.enableFreezer}
     );
 
     try {

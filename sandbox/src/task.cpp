@@ -83,6 +83,9 @@ void Task::configure_cgroup_() {
     if (constraints_.maxForks) {
         cgroupHandler_->limitProcesses(*constraints_.maxForks);
     }
+    if (constraints_.freezable) {
+        cgroupHandler_->addFreezerController();
+    }
     cgroupHandler_->create();
 }
 

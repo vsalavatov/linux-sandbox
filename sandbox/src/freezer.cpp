@@ -62,23 +62,31 @@ int main(int argc, char *argv[]) {
     }
 
     try {
-        auto path = "/proc/"s + std::to_string(taskPid) + "/ns/cgroup";
-        auto fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-        if (fd == -1) {
-            throw SandboxException("failed to read namespace link: "s + std::strerror(errno));
-        }
-        if (setns(fd, 0) == -1) {
-            throw SandboxException("failed to join task's cgroup namespace: "s + std::strerror(errno));
+        auto path = "/proc/"s + std::to_string(taskPid) + "/ns/";
+        for (auto &nsfile : std::filesystem::directory_iterator(path)) {
+            auto nsfilepath = nsfile.path();
+            auto filename = nsfilepath.filename();
+            if (filename == "user") 
+                continue;
+            auto fd = open(nsfilepath.c_str(), O_RDONLY | O_CLOEXEC);
+            if (fd == -1) {
+                throw SandboxException("failed to read namespace link "s + filename.string() + ": "s + std::strerror(errno));
+            }
+            if (setns(fd, 0) == -1) {
+                throw SandboxException("failed to join task's "s + filename.string() + " namespace: "s + std::strerror(errno));
+            }
         }
     } catch (SandboxException &e) {
         std::cout << "Error: " << e.what() << std::endl;
         return 1;
     }
 
+    CGroupHandler::libinit();
+    // CGroupHandler::setLibCGroupLoggerLevel(1000);
+
     try {
         auto filename = opts.statusFilePath.filename();
-        std::cout << std::string(filename) << std::endl;
-        CGroupHandler cg(filename.c_str());
+        CGroupHandler cg(filename.c_str(), false);
         cg.loadFromKernel();
         if (opts.thaw) {
             cg.thaw();

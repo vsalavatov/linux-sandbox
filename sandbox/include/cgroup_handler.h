@@ -11,12 +11,16 @@ void setLibCGroupLoggerLevel(int level = -1);
 
 class CGroupHandler {
 public:
-    CGroupHandler(const char *name);
+    CGroupHandler(const char *name, bool owning = true);
     ~CGroupHandler();
+
+    static void libinit();
+    static void setLibCGroupLoggerLevel(int level);
 
     void limitMemory(std::size_t bytes);
     void limitProcesses(std::size_t maxProcesses);
 
+    void addFreezerController();
     void freeze();
     void thaw();
 
@@ -27,12 +31,10 @@ public:
     void propagateToKernel();
 
 private:
-    cgroup_controller* obtainFreezerController_();
+    cgroup_controller* getController_(const char* name);
 
     cgroup* cg_;
-    cgroup_controller* memory_;
-    cgroup_controller* pids_;
-    cgroup_controller* freezer_;
+    bool owning_;
 };
 
 } // namespace sandbox
