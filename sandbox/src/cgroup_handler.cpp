@@ -51,6 +51,16 @@ void CGroupHandler::limitMemory(std::size_t bytes) {
     }
 }
 
+void CGroupHandler::limitProcesses(std::size_t maxProcesses) {
+    pids_ = cgroup_add_controller(cg_, "pids");
+    if (!pids_) {
+        throw SandboxError("failed to initialize cgroup controller \"pids\"");
+    }
+    if (auto ret = cgroup_set_value_uint64(pids_, "pids.max", maxProcesses); ret) {
+        throw SandboxError("failed to set limit of number of processes: " + cgroup_strerror(ret));
+    }
+}
+
 void CGroupHandler::create() {
     // TODO: fix this
     /*auto uid = getuid(); 

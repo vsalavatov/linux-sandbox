@@ -77,6 +77,9 @@ void Task::configure_cgroup_() {
     if (constraints_.maxMemoryBytes) {
         cgroupHandler_->limitMemory(*constraints_.maxMemoryBytes);
     }
+    if (constraints_.maxForks) {
+        cgroupHandler_->limitProcesses(*constraints_.maxForks);
+    }
     cgroupHandler_->create();
 }
 

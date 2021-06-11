@@ -33,23 +33,27 @@ struct Options {
             i++;
             if (arg == "--") break;
             // todo parse contraints
+            if (arg == "--new-network") {
+                opts.newNetwork = true;
+            }
+            if (arg == "--libcgroup-verbose") {
+                opts.libcgroupVerbose = true;
+            }
+            if (i >= argc) {
+                throw SandboxException(arg + " option without an argument");
+            }
+            std::stringstream data(argv[i++]);
+            std::size_t limit;
+            data >> limit;
+            if (data.fail()) {
+                throw SandboxError(arg + " option expects a numeric argument (bytes)");
+            }
             if (arg == "-t" || arg == "--time-limit") {
                 throw SandboxException("unsupported argument: " + arg);
             } else if (arg == "-m" || arg == "--memory-limit") {
-                if (i >= argc) {
-                    throw SandboxException("-m option without an argument");
-                }
-                std::stringstream data(argv[i++]);
-                std::size_t limit;
-                data >> limit;
-                if (data.fail()) {
-                    throw SandboxError("-m option expects a numeric argument (bytes)");
-                }
                 opts.memoryLimit = limit;
-            } else if (arg == "--new-network") {
-                opts.newNetwork = true;
-            } else if (arg == "--libcgroup-verbose") {
-                opts.libcgroupVerbose = true;
+            } else if (arg == "-f" || arg == "--max-forks") {
+                opts.maxForks = limit;
             } else {
                 throw SandboxException("unsupported argument: " + arg);
             }
@@ -65,7 +69,7 @@ struct Options {
 
 int main(int argc, char *argv[]) {
     Options opts;
-    try{ 
+    try{
         opts = Options::fromSysArgs(argc, argv);
     } catch(SandboxException &e) {
         std::cout << "Bad arguments: " << e.what() << std::endl;
@@ -78,8 +82,8 @@ int main(int argc, char *argv[]) {
     }
 
     auto task = Task(
-        opts.executable, 
-        opts.args, 
+        opts.executable,
+        opts.args,
         TaskConstraints{opts.timeLimit, opts.memoryLimit, opts.maxForks, opts.newNetwork}
     );
 
@@ -89,6 +93,6 @@ int main(int argc, char *argv[]) {
     } catch (SandboxException &e) {
         std::cout << "Execution failed: " << e.what() << std::endl;
     }
-    
+
     return 0;
 }

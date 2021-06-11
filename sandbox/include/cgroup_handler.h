@@ -15,12 +15,14 @@ public:
     ~CGroupHandler();
 
     void limitMemory(std::size_t bytes);
+    void limitProcesses(std::size_t maxProcesses);
     void create();
     void attach();
 
 private:
     cgroup* cg_;
     cgroup_controller* memory_;
+    cgroup_controller* pids_;
     cgroup_controller* freezer_;
 };
 
