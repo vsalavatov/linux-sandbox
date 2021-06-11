@@ -8,12 +8,14 @@ TaskConstraints::TaskConstraints(
     std::optional<std::size_t> maxMemoryBytes, 
     std::optional<std::size_t> maxForks,
     std::optional<int> niceness,
-    bool newNetwork
+    bool newNetwork,
+    bool freezable
 ) : maxRealTimeSeconds{maxRealTimeSeconds}
   , maxMemoryBytes{maxMemoryBytes}
   , maxForks{maxForks}
-  , newNetwork{newNetwork}
   , niceness{niceness}
+  , newNetwork{newNetwork}
+  , freezable{freezable}
 {}
 
 } // namespace sandbox

@@ -14,6 +14,7 @@ struct Options {
     "   [-m|--memory-limit <bytes>]\n"
     "   [-f|--max-forks <count>]\n"
     "   [-n|--niceness <value from [-20, 19]>]\n"
+    "   [--no-freezer]\n"
     "   [--new-network]\n"
     "   [--libcgroup-verbose]";
 
@@ -25,7 +26,7 @@ struct Options {
     std::optional<std::size_t> maxForks;
     bool newNetwork = false;
     bool libcgroupVerbose = false;
-    
+    bool enableFreezer = true;
 
     static Options fromSysArgs(int argc, char *argv[]) {
         Options opts{};
@@ -37,16 +38,22 @@ struct Options {
             // todo parse contraints
             if (arg == "--new-network") {
                 opts.newNetwork = true;
+                continue;
             }
             if (arg == "--libcgroup-verbose") {
                 opts.libcgroupVerbose = true;
+                continue;
+            }
+            if (arg == "--no-freezer") {
+                opts.enableFreezer = false;
+                continue;
             }
             if (i >= argc) {
                 throw SandboxException(arg + " option without an argument");
             }
             std::stringstream data(argv[i++]);
             if (data.fail()) {
-                throw SandboxError(arg + " option expects a numeric argument (bytes)");
+                throw SandboxError(arg + " option expects a numeric argument");
             }
             if (arg == "-t" || arg == "--time-limit") {
                 throw SandboxException("unsupported argument: " + arg);
@@ -82,17 +89,26 @@ int main(int argc, char *argv[]) {
     } catch(SandboxException &e) {
         std::cout << "Bad arguments: " << e.what() << std::endl;
         std::cout << Options::HELP << std::endl;
-        return 0;
+        return 1;
     }
 
+    CGroupHandler::libinit();
+
     if (opts.libcgroupVerbose) {
-        sandbox::setLibCGroupLoggerLevel(100000);
+        CGroupHandler::setLibCGroupLoggerLevel(100000);
     }
 
     auto task = Task(
         opts.executable,
         opts.args,
-        TaskConstraints{opts.timeLimit, opts.memoryLimit, opts.maxForks,  opts.niceness, opts.newNetwork}
+        TaskConstraints{
+            opts.timeLimit, 
+            opts.memoryLimit, 
+            opts.maxForks, 
+            opts.niceness, 
+            opts.newNetwork, 
+            opts.enableFreezer
+        }
     );
 
     try {
@@ -100,6 +116,7 @@ int main(int argc, char *argv[]) {
         task.await();
     } catch (SandboxException &e) {
         std::cout << "Execution failed: " << e.what() << std::endl;
+        return 1;
     }
 
     return 0;

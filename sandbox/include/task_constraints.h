@@ -14,7 +14,8 @@ public:
         std::optional<std::size_t> maxMemoryBytes, 
         std::optional<std::size_t> maxForks,
         std::optional<int> niceness,
-        bool newNetwork = false
+        bool newNetwork = false,
+        bool freezable = true
     );
 
     const std::optional<double> maxRealTimeSeconds;
@@ -23,6 +24,7 @@ public:
     const std::optional<int> niceness;
 
     const bool newNetwork;
+    const bool freezable;
     // TODO file access
     // TODO signals ? 
     // TODO other things

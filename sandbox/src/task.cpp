@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <iostream>
+#include <fstream>
 #include <random>
 
 
@@ -16,10 +17,13 @@ namespace sandbox
 {
 
 Task::Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints)
-    : executable_{std::move(executable)}
+    : taskId_{generateTaskId_()}
+    , statusFile_{taskId_}
+    , executable_{std::move(executable)}
     , args_{std::move(args)}
     , constraints_{std::move(constraints)}
-{}
+{
+}
 
 void Task::start() {
     prepare_();
@@ -79,14 +83,16 @@ void Task::unshare_() {
 }
 
 void Task::configure_cgroup_() {
-    auto taskId = "sandbox-task-"s + generateTaskId_();
-    cgroupHandler_ = std::make_unique<CGroupHandler>(taskId.c_str());
+    cgroupHandler_ = std::make_unique<CGroupHandler>(taskId_.c_str());
     
     if (constraints_.maxMemoryBytes) {
         cgroupHandler_->limitMemory(*constraints_.maxMemoryBytes);
     }
     if (constraints_.maxForks) {
         cgroupHandler_->limitProcesses(*constraints_.maxForks);
+    }
+    if (constraints_.freezable) {
+        cgroupHandler_->addFreezerController();
     }
     cgroupHandler_->create();
 }
@@ -121,7 +127,7 @@ std::string Task::generateTaskId_() {
     for (int i = 0; i < length; i++) {
         result += alphabet[gen() % alphabet.length()];
     }
-    return result;
+    return "sandbox-task-"s + result;
 }
 
 } // namespace sandbox
