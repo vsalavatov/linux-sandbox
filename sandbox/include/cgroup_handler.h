@@ -6,7 +6,9 @@
 
 namespace sandbox
 {
-    
+
+void setLibCGroupLoggerLevel(int level = -1);
+
 class CGroupHandler {
 public:
     CGroupHandler(const char *name);

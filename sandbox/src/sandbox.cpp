@@ -13,7 +13,8 @@ struct Options {
     "   [-t|--time-limit <seconds>]\n"
     "   [-m|--memory-limit <bytes>]\n"
     "   [-f|--max-forks <count>]\n"
-    "   [--new-network]";
+    "   [--new-network]\n"
+    "   [--libcgroup-verbose]";
 
     std::string executable;
     std::vector<std::string> args;
@@ -21,6 +22,7 @@ struct Options {
     std::optional<std::size_t> memoryLimit;
     std::optional<std::size_t> maxForks;
     bool newNetwork = false;
+    bool libcgroupVerbose = false;
     
 
     static Options fromSysArgs(int argc, char *argv[]) {
@@ -46,6 +48,8 @@ struct Options {
                 opts.memoryLimit = limit;
             } else if (arg == "--new-network") {
                 opts.newNetwork = true;
+            } else if (arg == "--libcgroup-verbose") {
+                opts.libcgroupVerbose = true;
             } else {
                 throw SandboxException("unsupported argument: " + arg);
             }
@@ -57,8 +61,6 @@ struct Options {
         }
         return opts;
     }
-
-
 };
 
 int main(int argc, char *argv[]) {
@@ -69,6 +71,10 @@ int main(int argc, char *argv[]) {
         std::cout << "Bad arguments: " << e.what() << std::endl;
         std::cout << Options::HELP << std::endl;
         return 0;
+    }
+
+    if (opts.libcgroupVerbose) {
+        sandbox::setLibCGroupLoggerLevel(100000);
     }
 
     auto task = Task(

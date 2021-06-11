@@ -6,18 +6,21 @@
 namespace sandbox
 {
 
+static void __attribute__ ((constructor)) init_libcgroup() {
+    if (int ret = cgroup_init(); ret != 0) {
+        fprintf(stderr, "failed to initialize libcgroup: %s\n", cgroup_strerror(ret));
+    }
+}
+
 static void libcgroup_logger_(void *userdata, int level, const char *fmt, va_list ap)
 {
     fprintf(stderr, "LIBCGROUP: ");
     vfprintf(stderr, fmt, ap);
 }
 
-static void __attribute__ ((constructor)) init_libcgroup() {
-    if (int ret = cgroup_init(); ret != 0) {
-        fprintf(stderr, "failed to initialize libcgroup: %s\n", cgroup_strerror(ret));
-    }
-    cgroup_set_logger(libcgroup_logger_, -1, NULL); // set -1 to 100000 to enable verbosity
-};
+void setLibCGroupLoggerLevel(int level) {
+    cgroup_set_logger(libcgroup_logger_, level, NULL);
+}
 
 CGroupHandler::CGroupHandler(const char *name) {
     cg_ = cgroup_new_cgroup(name);
