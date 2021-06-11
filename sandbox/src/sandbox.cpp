@@ -52,22 +52,27 @@ struct Options {
                 throw SandboxException(arg + " option without an argument");
             }
             std::stringstream data(argv[i++]);
-            if (data.fail()) {
-                throw SandboxError(arg + " option expects a numeric argument");
-            }
+            auto onReadFail = [&](std::string expected) {
+                if (data.fail()) {
+                    throw SandboxException(arg + " option expects " + expected);
+                }
+            };
             if (arg == "-t" || arg == "--time-limit") {
                 throw SandboxException("unsupported argument: " + arg);
             } else if (arg == "-m" || arg == "--memory-limit") {
                 size_t limit;
                 data >> limit;
+                onReadFail("a numeric argument (# bytes)");
                 opts.memoryLimit = limit;
             } else if (arg == "-n" || arg == "--niceness") {
                 int limit;
                 data >> limit;
+                onReadFail("a numeric argument (niceness)");
                 opts.niceness = limit;
             } else if (arg == "-f" || arg == "--max-forks") {
                 size_t limit;
                 data >> limit;
+                onReadFail("a numeric argument (# forks)");
                 opts.maxForks = limit;
             } else {
                 throw SandboxException("unsupported argument: " + arg);
