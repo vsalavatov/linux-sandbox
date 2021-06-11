@@ -13,6 +13,7 @@ struct Options {
     "   [-t|--time-limit <seconds>]\n"
     "   [-m|--memory-limit <bytes>]\n"
     "   [-f|--max-forks <count>]\n"
+    "   [-n|--niceness <value from [-20, 19]>]\n"
     "   [--new-network]\n"
     "   [--libcgroup-verbose]";
 
@@ -20,6 +21,7 @@ struct Options {
     std::vector<std::string> args;
     std::optional<double> timeLimit;
     std::optional<std::size_t> memoryLimit;
+    std::optional<int> niceness;
     std::optional<std::size_t> maxForks;
     bool newNetwork = false;
     bool libcgroupVerbose = false;
@@ -43,16 +45,22 @@ struct Options {
                 throw SandboxException(arg + " option without an argument");
             }
             std::stringstream data(argv[i++]);
-            std::size_t limit;
-            data >> limit;
             if (data.fail()) {
                 throw SandboxError(arg + " option expects a numeric argument (bytes)");
             }
             if (arg == "-t" || arg == "--time-limit") {
                 throw SandboxException("unsupported argument: " + arg);
             } else if (arg == "-m" || arg == "--memory-limit") {
+                size_t limit;
+                data >> limit;
                 opts.memoryLimit = limit;
+            } else if (arg == "-n" || arg == "--niceness") {
+                int limit;
+                data >> limit;
+                opts.niceness = limit;
             } else if (arg == "-f" || arg == "--max-forks") {
+                size_t limit;
+                data >> limit;
                 opts.maxForks = limit;
             } else {
                 throw SandboxException("unsupported argument: " + arg);
@@ -84,7 +92,7 @@ int main(int argc, char *argv[]) {
     auto task = Task(
         opts.executable,
         opts.args,
-        TaskConstraints{opts.timeLimit, opts.memoryLimit, opts.maxForks, opts.newNetwork}
+        TaskConstraints{opts.timeLimit, opts.memoryLimit, opts.maxForks,  opts.niceness, opts.newNetwork}
     );
 
     try {

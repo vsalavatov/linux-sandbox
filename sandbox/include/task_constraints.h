@@ -13,13 +13,14 @@ public:
         std::optional<double> maxRealTimeSeconds,
         std::optional<std::size_t> maxMemoryBytes, 
         std::optional<std::size_t> maxForks,
-
+        std::optional<int> niceness,
         bool newNetwork = false
     );
 
     const std::optional<double> maxRealTimeSeconds;
     const std::optional<std::size_t> maxMemoryBytes;
     const std::optional<std::size_t> maxForks;
+    const std::optional<int> niceness;
 
     const bool newNetwork;
     // TODO file access

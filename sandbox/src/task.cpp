@@ -1,6 +1,7 @@
 #include "task.h"
 #include "exceptions.h"
 
+#include <sys/resource.h>
 #include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -28,6 +29,13 @@ void Task::start() {
         throw SandboxError("failed to fork: "s + std::strerror(errno));
     }
     if (pid != 0) { // parent
+        if (constraints_.niceness) {
+            std::cout << *constraints_.niceness << std::endl;
+            int ret = setpriority(PRIO_PROCESS, pid, *constraints_.niceness);
+            if (ret == -1) {
+                std::cerr << "failed to set niceness: " << strerror(errno) << std::endl;
+            }
+        }
         pid_ = pid;
         return;
     }
