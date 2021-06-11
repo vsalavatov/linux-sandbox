@@ -3,6 +3,7 @@ add_executable(sandbox
     src/task.cpp
     src/task_constraints.cpp
     src/cgroup_handler.cpp
+    src/status_file.cpp
     src/exceptions.cpp
 )
 

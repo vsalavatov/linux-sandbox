@@ -9,6 +9,7 @@
 #include "task_constraints.h"
 #include "run_audit.h"
 #include "cgroup_handler.h"
+#include "status_file.h"
 
 namespace sandbox
 {
@@ -32,6 +33,9 @@ protected:
     void exec_();
 
     static std::string generateTaskId_();
+
+    const std::string taskId_;
+    const StatusFile statusFile_;
 
     std::filesystem::path executable_;
     std::vector<std::string> args_;
