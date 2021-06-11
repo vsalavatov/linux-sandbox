@@ -61,6 +61,16 @@ void CGroupHandler::limitProcesses(std::size_t maxProcesses) {
     }
 }
 
+void CGroupHandler::freeze() {
+    auto freezeController = obtainFreezerController_();
+    cgroup_set_value_string(freezeController, "freezer.state", "FROZEN");
+}
+
+void CGroupHandler::thaw() {
+    auto freezeController = obtainFreezerController_();
+    cgroup_set_value_string(freezeController, "freezer.state", "THAWED");
+}
+
 void CGroupHandler::create() {
     // TODO: fix this
     /*auto uid = getuid(); 
@@ -87,6 +97,27 @@ void CGroupHandler::attach() {
     if (auto ret = cgroup_attach_task(cg_); ret) {
         throw SandboxError("failed to attach process to cgroup: " + cgroup_strerror(ret));
     }
+}
+
+void CGroupHandler::loadFromKernel() {
+    if (auto ret = cgroup_get_cgroup(cg_); ret) {
+        throw SandboxError("failed to read cgroup data from kernel: " + cgroup_strerror(ret));
+    }
+}
+
+void CGroupHandler::propagateToKernel() {
+    if (auto ret = cgroup_modify_cgroup(cg_); ret) {
+        throw SandboxError("failed to write data into cgroup in kernel: " + cgroup_strerror(ret));
+    }
+}
+
+cgroup_controller* CGroupHandler::obtainFreezerController_() {
+    cgroup_controller* cgc = cgroup_get_controller(cg_, "freezer");
+    if (cgc) {
+        return cgc;
+    }
+    cgc = cgroup_add_controller(cg_, "freezer");
+    return cgc;
 }
 
 } // namespace sandbox

@@ -2,7 +2,7 @@
 #include <unistd.h>
 
 int main() {
-    sleep(10);
+    sleep(30);
     std::cout << "awaken" << std::endl;
     return 0;
 }

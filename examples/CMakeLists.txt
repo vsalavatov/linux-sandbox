@@ -1,5 +1,5 @@
 add_subdirectory(echo42)
-add_subdirectory(sleep10)
+add_subdirectory(sleep30)
 add_subdirectory(ipcheck)
 add_subdirectory(eat100mb)
 add_subdirectory(forks)

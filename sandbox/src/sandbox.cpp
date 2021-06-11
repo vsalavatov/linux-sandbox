@@ -35,9 +35,11 @@ struct Options {
             // todo parse contraints
             if (arg == "--new-network") {
                 opts.newNetwork = true;
+                continue;
             }
             if (arg == "--libcgroup-verbose") {
                 opts.libcgroupVerbose = true;
+                continue;
             }
             if (i >= argc) {
                 throw SandboxException(arg + " option without an argument");
@@ -46,7 +48,7 @@ struct Options {
             std::size_t limit;
             data >> limit;
             if (data.fail()) {
-                throw SandboxError(arg + " option expects a numeric argument (bytes)");
+                throw SandboxError(arg + " option expects a numeric argument");
             }
             if (arg == "-t" || arg == "--time-limit") {
                 throw SandboxException("unsupported argument: " + arg);
@@ -74,7 +76,7 @@ int main(int argc, char *argv[]) {
     } catch(SandboxException &e) {
         std::cout << "Bad arguments: " << e.what() << std::endl;
         std::cout << Options::HELP << std::endl;
-        return 0;
+        return 1;
     }
 
     if (opts.libcgroupVerbose) {
@@ -92,6 +94,7 @@ int main(int argc, char *argv[]) {
         task.await();
     } catch (SandboxException &e) {
         std::cout << "Execution failed: " << e.what() << std::endl;
+        return 1;
     }
 
     return 0;
