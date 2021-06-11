@@ -14,7 +14,7 @@ static void libcgroup_logger_(void *userdata, int level, const char *fmt, va_lis
 
 static void __attribute__ ((constructor)) init_libcgroup() {
     if (int ret = cgroup_init(); ret != 0) {
-        fprintf(stderr, "failed to initialize libcgroup: return code %d", ret);
+        fprintf(stderr, "failed to initialize libcgroup: %s\n", cgroup_strerror(ret));
     }
     cgroup_set_logger(libcgroup_logger_, -1, NULL); // set -1 to 100000 to enable verbosity
 };
@@ -41,10 +41,10 @@ void CGroupHandler::limitMemory(std::size_t bytes) {
         throw SandboxError("failed to initialize cgroup controller \"memory\"");
     }
     if (auto ret = cgroup_set_value_uint64(memory_, "memory.max", bytes); ret) {
-        throw SandboxError("failed to set memory limit: return code " + std::to_string(ret));
+        throw SandboxError("failed to set memory limit: " + cgroup_strerror(ret));
     }
     if (auto ret = cgroup_set_value_uint64(memory_, "memory.swap.max", 0); ret) { // disable swap
-        throw SandboxError("failed to disable swap: return code " + std::to_string(ret));
+        throw SandboxError("failed to disable swap: " + cgroup_strerror(ret));
     }
 }
 
@@ -66,13 +66,13 @@ void CGroupHandler::create() {
     */
 
     if (auto ret = cgroup_create_cgroup(cg_, 0); ret) {
-        throw SandboxError("failed to create cgroup: return code " + std::to_string(ret) + ". Maybe you need to run this with sudo?");
+        throw SandboxError("failed to create cgroup: " + cgroup_strerror(ret));
     }
 }
 
 void CGroupHandler::attach() {
     if (auto ret = cgroup_attach_task(cg_); ret) {
-        throw SandboxError("failed to attach process to cgroup: return code " + std::to_string(ret));
+        throw SandboxError("failed to attach process to cgroup: " + cgroup_strerror(ret));
     }
 }
 
