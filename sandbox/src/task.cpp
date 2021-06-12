@@ -33,13 +33,6 @@ void Task::start() {
         throw SandboxError("failed to fork: "s + std::strerror(errno));
     }
     if (pid != 0) { // parent
-        if (constraints_.niceness) {
-            std::cout << *constraints_.niceness << std::endl;
-            int ret = setpriority(PRIO_PROCESS, pid, *constraints_.niceness);
-            if (ret == -1) {
-                std::cerr << "failed to set niceness: " << strerror(errno) << std::endl;
-            }
-        }
         pid_ = pid;
         return;
     }
@@ -98,6 +91,12 @@ void Task::configure_cgroup_() {
 }
 
 void Task::exec_() {
+    if (constraints_.niceness) {
+        int ret = setpriority(PRIO_PROCESS, 0, *constraints_.niceness);
+        if (ret == -1) {
+            throw SandboxException("failed to set niceness: "s + strerror(errno));
+        }
+    }
     std::vector<const char*> argv(1 + args_.size() + 1);
     argv[0] = executable_.c_str();
     for (auto i = 0; i < args_.size(); i++) {
