@@ -50,18 +50,23 @@ void Task::cancel() {
 
 void Task::await() { // this is an ad-hod impl
     int status;
-    auto r = waitpid(pid_, &status, 0);
-    if (r < 0) {
-        throw SandboxException("failed to await the task: "s + std::strerror(errno));
-    }
-    if (WIFEXITED(status)) {
-        impl::Message() << "exited with code: " << WEXITSTATUS(status);
-    }
-    if (WIFSIGNALED(status)) {
-        impl::Message() << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
-    }
-    if (WIFSTOPPED(status)) {
-        impl::Message() << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, 0)) > 0) {
+        std::cout << pid << std::endl;
+        if (pid < 0) {
+            throw SandboxException("failed to await the task: "s + std::strerror(errno));
+        }
+        if (WIFEXITED(status)) {
+            std::cerr << "exited with code: " << WEXITSTATUS(status) << std::endl;
+        }
+        if (WIFSIGNALED(status)) {
+            std::cerr << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")"
+                      << std::endl;
+        }
+        if (WIFSTOPPED(status)) {
+            std::cerr << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")"
+                      << std::endl;
+        }
     }
 }
 
