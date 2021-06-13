@@ -11,7 +11,7 @@
 #include <iostream>
 #include <random>
 
-#define STACKSIZE (1024*1024)
+#define STACKSIZE (64*1024*1024)
 static char cmd_stack[STACKSIZE];
 
 using namespace std::string_literals;
@@ -20,12 +20,27 @@ using namespace std::string_literals;
 namespace sandbox
 {
 
+impl::Message::Message(std::string intro) {
+    std::cerr << "\u001b[33;1m" << intro;
+}
+
+impl::Message::~Message() {
+    std::cerr << "\u001b[0m" << std::endl;
+}
+
+std::ostream& impl::Message::operator<<(const auto& o) {
+    std::cerr << o;
+    return std::cerr;
+}
+
+
 Task::Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints)
     : taskId_{generateTaskId_()}
     , statusFile_{taskId_}
     , executable_{std::move(executable)}
     , args_{std::move(args)}
     , constraints_{std::move(constraints)}
+    , root_{"/"}
 {
 }
 
@@ -40,33 +55,37 @@ void Task::await() { // this is an ad-hod impl
         throw SandboxException("failed to await the task: "s + std::strerror(errno));
     }
     if (WIFEXITED(status)) {
-        std::cerr << "exited with code: " << WEXITSTATUS(status) << std::endl;
+        impl::Message() << "exited with code: " << WEXITSTATUS(status);
     }
     if (WIFSIGNALED(status)) {
-        std::cerr << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")" << std::endl;
+        impl::Message() << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
     }
     if (WIFSTOPPED(status)) {
-        std::cerr << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")" << std::endl;
+        impl::Message() << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
     }
 }
 
-static int execcmd(void* arg) {
+int impl::execcmd(void* arg) {
     Task *task = ((Task*)arg);
     try {
-        task->exec();
+        task->exec_();
     } catch (SandboxException &e) {
-        std::cerr << e.what() << std::endl;
+        impl::Message() << e.what();
+        return 69;
     }
     return 0;
 }
 
-void Task::prepare() {
+void Task::start() {
+    impl::Message() << "Starting task " << taskId_ << "...";
     if (pipe(pipefd_) < 0)
         throw SandboxError("failed to create pipe: " + strerror(errno));
     unshare_();
     configureCGroup_();
+    prepareImage_();
     clone_();
     cgroupHandler_->attachTask(pid_);
+    setNiceness_();
     prepareUserns_();
     if (write(pipefd_[1], "OK", 2) != 2)
         throw SandboxError("failed to write to pipe: " + strerror(errno));
@@ -84,11 +103,53 @@ void Task::unshare_() {
     }
 }
 
+void Task::prepareImage_() {
+    impl::Message() << "Preparing image...";
+    if (constraints_.fsImage == std::nullopt) 
+        return;
+
+    root_ = std::filesystem::absolute(taskId_ + ".d/");
+    auto copyOpts = std::filesystem::copy_options{std::filesystem::copy_options::recursive};
+    try {
+        std::filesystem::create_directories(root_);
+        copy(*constraints_.fsImage, root_, copyOpts);
+    } catch (std::exception &e) {
+        throw SandboxException("failed to copy fs image: "s + e.what());
+    }
+    for (auto &m : constraints_.fileMapping) {
+        try {
+            if (std::filesystem::is_directory(m.from)) {
+                std::filesystem::create_directories(m.to);
+            } else {
+                std::filesystem::create_directories(m.to.parent_path());
+            }
+            auto fp = m.to.string();
+            if (fp.starts_with("/")) fp = fp.substr(1);
+            copy(m.from, root_ / fp, copyOpts);
+        } catch (std::exception &e) {
+            throw SandboxException("failed to copy "s + m.from.string() + " to "s + (m.to).string() + ": "s + e.what());
+        }
+    }
+    if (chown(root_.c_str(), 1000, 1000)) {
+        throw SandboxError("failed to chown image: "s + std::strerror(errno));
+    }
+    impl::Message() << "Image is ready";
+}
+
 void Task::clone_() {
     int flags = SIGCHLD | CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC;
-    pid_ = clone(execcmd, cmd_stack + STACKSIZE, flags, this);
+    pid_ = clone(impl::execcmd, cmd_stack + STACKSIZE, flags, this);
     if (pid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
+}
+
+void Task::setNiceness_() {
+    if (constraints_.niceness) {
+        int ret = setpriority(PRIO_PROCESS, pid_, *constraints_.niceness);
+        if (ret == -1) {
+            throw SandboxError("failed to set niceness: "s + strerror(errno));
+        }
+    }
 }
 
 void Task::prepareProcfs_() {
@@ -99,19 +160,19 @@ void Task::prepareProcfs_() {
         throw SandboxError("failed to mount proc: "s + strerror(errno));
 }
 
-void Task::prepareMntns_(std::string rootfs) {
-    std::string mnt = rootfs;
-    if (mount(rootfs.c_str(), mnt.c_str(), "ext4", MS_BIND, ""))
-        throw SandboxError("failed to mount " + rootfs + " at " + mnt + ": " + strerror(errno));
+void Task::prepareMntns_() {
+    if (constraints_.fsImage == std::nullopt) 
+        return;
+    std::string mnt = root_;
+    if (mount(root_.c_str(), mnt.c_str(), "ext4", MS_BIND, ""))
+        throw SandboxError("failed to mount image at " + mnt + ": " + strerror(errno));
 
     if (chdir(mnt.c_str()))
-        throw SandboxError("failed to chdir to rootfs mounted at " + mnt + ": " + strerror(errno));
-
+        throw SandboxError("failed to chdir to image mounted at " + mnt + ": " + strerror(errno));
+    
     std::string put_old = "put_old";
     if (mkdir(put_old.c_str(), 0777) && errno != EEXIST)
         throw SandboxError("failed to mkdir " + put_old + ": " + strerror(errno));
-
-    std::cout << "Current path is " << std::filesystem::current_path() << '\n';
 
     if (syscall(SYS_pivot_root, ".", put_old.c_str()))
         throw SandboxError("failed to pivot_root from . to " + put_old + ": " + strerror(errno));
@@ -123,19 +184,22 @@ void Task::prepareMntns_(std::string rootfs) {
 
     if (umount2(put_old.c_str(), MNT_DETACH))
         throw SandboxError("failed to umount " + put_old + ": " + strerror(errno));
+
+    if (chdir(constraints_.workDir.c_str()))
+        throw SandboxError("failed to chdir to working directory: " + strerror(errno));
 }
 
 
 void write_file(char path[100], char line[100]) {
     FILE *f = fopen(path, "w");
     if (f == NULL) {
-        throw SandboxError("Failed to open file " + path + " :" + strerror(errno));
+        throw SandboxError("failed to open file " + path + " :" + std::strerror(errno));
     }
     if (fwrite(line, 1, strlen(line), f) < 0) {
-        throw SandboxError("Failed to write to file " + path + " :" + strerror(errno));
+        throw SandboxError("failed to write to file " + path + " :" + std::strerror(errno));
     }
     if (fclose(f) != 0) {
-        throw SandboxError("Failed to close file " + path + " :" + strerror(errno));
+        throw SandboxError("failed to close file " + path + " :" + std::strerror(errno));
     }
 }
 
@@ -143,7 +207,8 @@ void Task::prepareUserns_() {
     char path[100];
     char line[100];
 
-    int uid = 1000;
+    uid_t uid = 1000;
+    gid_t gid = 1000;
 
     sprintf(path, "/proc/%d/uid_map", pid_);
     sprintf(line, "0 %d 1\n", uid);
@@ -154,7 +219,7 @@ void Task::prepareUserns_() {
     write_file(path, line);
 
     sprintf(path, "/proc/%d/gid_map", pid_);
-    sprintf(line, "0 %d 1\n", uid);
+    sprintf(line, "0 %d 1\n", gid);
     write_file(path, line);
 }
 
@@ -173,35 +238,23 @@ void Task::configureCGroup_() {
     cgroupHandler_->create();
 }
 
-void Task::exec() {
-    // We're done once we read something from the pipe.
+void Task::exec_() {
     char buf[2];
     if (read(pipefd_[0], buf, 2) != 2)
         throw SandboxError("failed to read from pipe: "s + strerror(errno));
 
-    // Assuming, 0 in the current namespace maps to
-    // a non-privileged UID in the parent namespace,
-    // drop superuser privileges if any by enforcing
-    // the exec'ed process runs with UID 0.
     if (setgid(0) == -1)
         throw SandboxError("failed to setgid: "s + strerror(errno));
     if (setuid(0) == -1)
         throw SandboxError("failed to setuid: "s + strerror(errno));
 
+    prepareMntns_();
 
-    if (constraints_.niceness) {
-        int ret = setpriority(PRIO_PROCESS, 0, *constraints_.niceness);
-        if (ret == -1) {
-            throw SandboxError("failed to set niceness: "s + strerror(errno));
-        }
-    }
     std::vector<const char*> argv(1 + args_.size() + 1);
     argv[0] = executable_.c_str();
     for (auto i = 0; i < args_.size(); i++) {
         argv[1 + i] = args_[i].c_str();
     }
-
-    prepareMntns_("../rootfs");
     auto res = execvp(executable_.c_str(), const_cast<char* const*>(argv.data()));
     if (res < 0) {
         throw SandboxError("failed to start the task: "s + std::strerror(errno));
@@ -211,7 +264,6 @@ void Task::exec() {
 RunAudit Task::getAudit() {
     throw SandboxError("not implemented");
 }
-
 
 std::string Task::generateTaskId_() {
     static const std::string alphabet = "0123456789abcdef";

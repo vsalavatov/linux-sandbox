@@ -3,19 +3,29 @@
 
 #include <cstddef>
 #include <optional>
+#include <filesystem>
+#include <vector>
 
 namespace sandbox
 {
 
 class TaskConstraints {
 public:
+    struct FileMapping {
+        std::filesystem::path from;
+        std::filesystem::path to;
+    };
+
     TaskConstraints(
         std::optional<double> maxRealTimeSeconds,
         std::optional<std::size_t> maxMemoryBytes, 
         std::optional<std::size_t> maxForks,
         std::optional<int> niceness,
-        bool newNetwork = false,
-        bool freezable = true
+        bool newNetwork,
+        bool freezable,
+        std::optional<std::filesystem::path> fsImage,
+        std::filesystem::path workDir,
+        std::vector<FileMapping> fileMapping
     );
 
     const std::optional<double> maxRealTimeSeconds;
@@ -25,7 +35,11 @@ public:
 
     const bool newNetwork;
     const bool freezable;
-    // TODO file access
+
+    const std::optional<std::filesystem::path> fsImage;
+    const std::filesystem::path workDir;
+    const std::vector<FileMapping> fileMapping;
+    
     // TODO signals ? 
     // TODO other things
 };

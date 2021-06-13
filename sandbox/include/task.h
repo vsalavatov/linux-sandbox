@@ -14,26 +14,41 @@
 namespace sandbox
 {
 
+namespace impl {
+    int execcmd(void *arg);
+
+    struct Message {
+        Message(std::string intro = "(Sandbox) ");
+        ~Message();
+        std::ostream& operator<<(const auto& o);
+    };
+};
+
 class Task {
 public:
     Task() = delete;
     Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints);
     virtual ~Task() = default;
 
-    void prepare();
+    void start();
     void cancel();
     void await();
-    void exec();
 
     RunAudit getAudit();
 
 protected:
+    void exec_();
     void unshare_();
+    void prepareImage_();
     void clone_();
-    void prepareMntns_(std::string rootfs);
+    void setNiceness_();
+    void prepareMntns_();
     void prepareProcfs_();
     void prepareUserns_();
     void configureCGroup_();
+
+    void setRealUser_();
+    void setEffectiveUser_();
 
     static std::string generateTaskId_();
 
@@ -43,11 +58,14 @@ protected:
     std::filesystem::path executable_;
     std::vector<std::string> args_;
     TaskConstraints constraints_;
+    std::filesystem::path root_;
 
     std::unique_ptr<CGroupHandler> cgroupHandler_;
 
     int pipefd_[2];
     pid_t pid_; // todo this is an ad-hoc thingie
+
+    friend int impl::execcmd(void*);
 };
 
 } // namespace sandbox

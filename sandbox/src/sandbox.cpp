@@ -16,7 +16,9 @@ struct Options {
     "   [-n|--niceness <value from [-20, 19]>]\n"
     "   [--no-freezer]\n"
     "   [--new-network]\n"
-    "   [--libcgroup-verbose]";
+    "   [--libcgroup-verbose]\n"
+    "   [-i|--fs-image <path> [-a|--add <path-from>:<path-to>]...]\n"
+    "   [-w|--work-dir <path>]\n";
 
     std::string executable;
     std::vector<std::string> args;
@@ -27,6 +29,9 @@ struct Options {
     bool newNetwork = false;
     bool libcgroupVerbose = false;
     bool enableFreezer = true;
+    std::optional<std::filesystem::path> fsImage;
+    std::filesystem::path workDir = ".";
+    std::vector<TaskConstraints::FileMapping> fileMapping;
 
     static Options fromSysArgs(int argc, char *argv[]) {
         Options opts{};
@@ -74,6 +79,23 @@ struct Options {
                 data >> limit;
                 onReadFail("a numeric argument (# forks)");
                 opts.maxForks = limit;
+            } else if (arg == "-i" || arg == "--fs-image") {
+                std::filesystem::path p;
+                data >> p;
+                opts.fsImage = p;
+            } else if (arg == "-w" || arg == "--work-dir") {
+                std::filesystem::path p;
+                data >> p;
+                opts.workDir = p;
+            } else if (arg == "-a" || arg == "--add") {
+                std::string pp;
+                data >> pp;
+                auto it = pp.find(':');
+                if (it == std::string::npos) {
+                    throw SandboxException(arg + " expects <path-from>:<path-to>, e.g. ./bin/cmd:/app/cmd");
+                }
+                std::filesystem::path from{pp.substr(0, it)}, to{pp.substr(it + 1)};
+                opts.fileMapping.emplace_back(from, to);
             } else {
                 throw SandboxException("unsupported argument: " + arg);
             }
@@ -112,12 +134,15 @@ int main(int argc, char *argv[]) {
             opts.maxForks, 
             opts.niceness, 
             opts.newNetwork, 
-            opts.enableFreezer
+            opts.enableFreezer,
+            opts.fsImage,
+            opts.workDir,
+            opts.fileMapping
         }
     );
 
     try {
-        task.prepare();
+        task.start();
         task.await();
     } catch (SandboxException &e) {
         std::cout << "Execution failed: " << e.what() << std::endl;
