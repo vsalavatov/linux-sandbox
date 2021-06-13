@@ -9,12 +9,14 @@
 #include <sys/stat.h>
 #include <sys/mount.h>
 #include <sys/prctl.h>
+#include <sys/capability.h>
 #include <syscall.h>
 #include <iostream>
 #include <random>
 
-#define STACKSIZE (64*1024*1024)
-static char cmd_stack[STACKSIZE];
+constexpr size_t watcherStackSize = 8*1024*1024;
+static char watcherStack[watcherStackSize];
+
 
 using namespace std::string_literals;
 
@@ -142,7 +144,7 @@ void Task::prepareImage_() {
 
 void Task::startWatcher_() {
     int flags = SIGCHLD | CLONE_NEWPID | CLONE_NEWUSER;
-    initPid_ = clone(impl::execWatcher, cmd_stack + STACKSIZE, flags, this);
+    initPid_ = clone(impl::execWatcher, watcherStack + watcherStackSize, flags, this);
     if (initPid_ == -1)
         throw SandboxError("failed to start watcher: " + strerror(errno));
 }
@@ -209,7 +211,12 @@ int impl::execWatcher(void* arg) {
 
 void Task::clone_() {
     int flags = SIGCHLD | CLONE_NEWNS | CLONE_NEWIPC;
-    taskPid_ = clone(impl::execCmd, cmd_stack + STACKSIZE, flags, this);
+    errno = 0;
+    char* stack = reinterpret_cast<char*>(malloc(constraints_.stackSize));
+    if (!stack && errno) {
+        throw SandboxError("failed to allocate memory for task's stack: " + strerror(errno));
+    }
+    taskPid_ = clone(impl::execCmd, stack + constraints_.stackSize, flags, this);
     if (taskPid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
     if (write(watcher2ExecPipefd_[1], "OK", 2) != 2)
@@ -240,6 +247,25 @@ void Task::limitTime_() {
             impl::Message() << "(out if time) failed to send SIGKILL: " << std::strerror(errno);
         }
         exit(0);
+    }
+}
+
+void Task::clearCapabilities_() {
+    cap_t cap = cap_get_proc();
+    if (!cap) {
+        throw SandboxError("failed to get capabilities");
+    }
+    if (cap_clear(cap)) {
+        throw SandboxError("failed to clear capabilities: "s + std::strerror(errno));
+    }
+    if (cap_set_proc(cap)) {
+        throw SandboxError("failed to set capabilities: "s + std::strerror(errno));
+    }
+    if (cap_free(cap)) {
+        throw SandboxError("failed to free capabilities: "s + std::strerror(errno));
+    }
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+        throw SandboxError("failed to restrict process (no new privs): "s + std::strerror(errno));
     }
 }
 
@@ -341,6 +367,9 @@ void Task::exec_() {
         throw SandboxError("failed to setuid: "s + strerror(errno));
 
     prepareMntns_();
+
+    if (!constraints_.preserveCapabilities)
+        clearCapabilities_();
 
     std::vector<const char*> argv(1 + args_.size() + 1);
     argv[0] = executable_.c_str();

@@ -14,28 +14,32 @@ struct Options {
     "Options:\n"
     "   [-t|--time-limit <seconds>]\n"
     "   [-m|--memory-limit <bytes>]\n"
+    "   [-s|--stack-size <bytes> (8MB by default)]\n"
     "   [-f|--max-forks <count>]\n"
     "   [-n|--niceness <value from [-20, 19]>]\n"
     "   [--no-freezer]\n"
     "   [--new-network]\n"
+    "   [--preserve-capabilities]\n"
     "   [--libcgroup-verbose]\n"
     "   [--watcher-verbose]\n"
     "   [-i|--fs-image <path> [-a|--add <path-from>:<path-to>]...]\n"
     "   [-r|--cleanup-fs-image-dir]\n"
     "   [-w|--work-dir <path>]\n"
-    "   [-u|--uid <uid>]\n"
-    "   [-g|--gid <gid>]\n";
+    "   [-u|--uid <uid> (1000 by default)]\n"
+    "   [-g|--gid <gid> (1000 by default)]\n";
 
     std::string executable;
     std::vector<std::string> args;
     std::optional<double> timeLimit;
     std::optional<std::size_t> memoryLimit;
+    std::size_t stackSize = 8*1024*1024;
     std::optional<int> niceness;
     std::optional<std::size_t> maxForks;
     bool newNetwork = false;
     bool libcgroupVerbose = false;
     bool watcherVerbose = false;
     bool enableFreezer = true;
+    bool preserveCapabilities = false;
     bool cleanupImageDir = false;
     std::optional<std::filesystem::path> fsImage;
     std::filesystem::path workDir = ".";
@@ -67,6 +71,10 @@ struct Options {
                 opts.enableFreezer = false;
                 continue;
             }
+            if (arg == "--preserve-capabilities") {
+                opts.preserveCapabilities = true;
+                continue;
+            }
             if (arg == "-r" || arg == "--cleanup-fs-image-dir") {
                 opts.cleanupImageDir = true;
                 continue;
@@ -90,6 +98,11 @@ struct Options {
                 data >> limit;
                 onReadFail("a numeric argument (# bytes)");
                 opts.memoryLimit = limit;
+            } else if (arg == "-s" || arg == "--stack-size") {
+                size_t limit;
+                data >> limit;
+                onReadFail("a numeric argument (# bytes)");
+                opts.stackSize = limit;
             } else if (arg == "-n" || arg == "--niceness") {
                 int limit;
                 data >> limit;
@@ -172,12 +185,14 @@ int main(int argc, char *argv[]) {
         opts.executable,
         opts.args,
         TaskConstraints{
-            opts.timeLimit, 
-            opts.memoryLimit, 
-            opts.maxForks, 
-            opts.niceness, 
-            opts.newNetwork, 
+            opts.timeLimit,
+            opts.memoryLimit,
+            opts.stackSize,
+            opts.maxForks,
+            opts.niceness,
+            opts.newNetwork,
             opts.enableFreezer,
+            opts.preserveCapabilities,
             opts.fsImage,
             opts.workDir,
             opts.fileMapping,
