@@ -55,7 +55,7 @@ int main()
 {
     skeleton_daemon();
     std::cout << "Daemon started." << std::endl;
-    sleep (10);
+    sleep (1);
     std::cout << "Daemon terminated." << std::endl;
     return EXIT_SUCCESS;
 }

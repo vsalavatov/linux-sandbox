@@ -57,6 +57,10 @@ class TestSandbox(unittest.TestCase):
         finally: 
             os.system('rm -rf test_data')
 
+    def test_daemon(self):
+        executable = './build/examples/daemon/daemon'
+        output, stderr = self.get_sandbox_output('', executable, '')
+        self.assertEqual('0. Parent pid: 2\n1. Child pid: 3\n2. Child pid: 4\nDaemon started.\nDaemon terminated.', output.strip())
     
 if __name__ == '__main__':
     current_directory = os.getcwd()
