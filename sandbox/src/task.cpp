@@ -1,5 +1,6 @@
 #include "task.h"
 #include "exceptions.h"
+#include "msg.h"
 
 #include <sys/resource.h>
 #include <cstring>
@@ -20,20 +21,6 @@ using namespace std::string_literals;
 namespace sandbox
 {
 
-impl::Message::Message(std::string intro) {
-    std::cerr << "\u001b[33;1m" << intro;
-}
-
-impl::Message::~Message() {
-    std::cerr << "\u001b[0m" << std::endl;
-}
-
-std::ostream& impl::Message::operator<<(const auto& o) {
-    std::cerr << o;
-    return std::cerr;
-}
-
-
 Task::Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints, bool watcherVerbose)
     : taskId_{generateTaskId_()}
     , statusFile_{taskId_}
@@ -42,11 +29,26 @@ Task::Task(std::filesystem::path executable, std::vector<std::string> args, Task
     , constraints_{std::move(constraints)}
     , root_{"/"}
     , watcherVerbose_{watcherVerbose}
+    , initPid_{0}
+    , taskPid_{0}
+    , interrupted_{false}
 {
 }
 
 void Task::cancel() {
-    throw SandboxError("not implemented");
+    if (!initPid_) {
+        return;
+    }
+    if (interrupted_) {
+        if (auto res = kill(initPid_, SIGKILL); res) {
+            impl::Message() << "failed to send SIGKILL: " << std::strerror(errno);
+        }
+    } else {
+        if (auto res = kill(initPid_, SIGINT); res) {
+            impl::Message() << "failed to send SIGINT: " << std::strerror(errno);
+        }
+        interrupted_ = true;
+    }
 }
 
 int Task::await() { 
@@ -136,6 +138,11 @@ void Task::startWatcher_() {
 }
 
 void Task::watcher_() {
+    signal(SIGINT, [](int a) -> void {
+        static bool interrupted = false;
+        if (interrupted) return;
+        kill(-1, SIGINT);
+    });
     char buf[2];
     if (read(main2WatcherPipefd_[0], buf, 2) != 2)
         throw SandboxError("failed to read from pipe: "s + strerror(errno));
@@ -181,6 +188,7 @@ int impl::execCmd(void* arg) {
 int impl::execWatcher(void* arg) {
     Task *task = ((Task*)arg);
     try {
+        task->cgroupHandler_->disown();
         task->watcher_();
     } catch (SandboxException &e) {
         impl::Message() << e.what();
@@ -194,7 +202,6 @@ void Task::clone_() {
     taskPid_ = clone(impl::execCmd, cmd_stack + STACKSIZE, flags, this);
     if (taskPid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
-    // prepareUserns_(pid_);
     if (write(watcher2ExecPipefd_[1], "OK", 2) != 2)
         throw SandboxError("failed to write to pipe: " + strerror(errno));
     if (close(watcher2ExecPipefd_[1]))
@@ -247,8 +254,7 @@ void Task::prepareMntns_() {
         throw SandboxError("failed to chdir to working directory: " + strerror(errno));
 }
 
-
-void write_file(char path[100], char line[100]) {
+static void write_file(char *path, char* line) {
     FILE *f = fopen(path, "w");
     if (f == NULL) {
         throw SandboxError("failed to open file " + path + " :" + std::strerror(errno));

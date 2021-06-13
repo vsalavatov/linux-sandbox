@@ -17,13 +17,7 @@ namespace sandbox
 namespace impl {
     int execCmd(void *arg);
     int execWatcher(void *arg);
-
-    struct Message {
-        Message(std::string intro = "(Sandbox) ");
-        ~Message();
-        std::ostream& operator<<(const auto& o);
-    };
-};
+} // namespace impl
 
 class Task {
 public:
@@ -70,6 +64,7 @@ protected:
     pid_t initPid_;
     pid_t taskPid_;
     const bool watcherVerbose_;
+    bool interrupted_;
 
     friend int impl::execCmd(void*);
     friend int impl::execWatcher(void*);

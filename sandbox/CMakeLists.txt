@@ -6,6 +6,7 @@ add_executable(sandbox
     src/cgroup_handler.cpp
     src/status_file.cpp
     src/exceptions.cpp
+    src/msg.cpp
 )
 
 target_link_libraries(sandbox PRIVATE cgroup)
@@ -21,6 +22,7 @@ add_executable(freezer
     src/freezer.cpp
     src/cgroup_handler.cpp
     src/exceptions.cpp
+    src/msg.cpp
 )
 
 target_link_libraries(freezer PRIVATE cgroup)

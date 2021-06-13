@@ -1,7 +1,9 @@
 #include <iostream>
+#include <signal.h>
 
 #include "task.h"
 #include "exceptions.h"
+#include "msg.h"
 
 using namespace sandbox;
 
@@ -132,7 +134,16 @@ struct Options {
     }
 };
 
+static std::unique_ptr<Task> task;
+void sighandler(int sig) {
+    if (task) {
+        task->cancel();
+    }
+}
+
 int main(int argc, char *argv[]) {
+    signal(SIGINT, sighandler);
+
     Options opts;
     try{
         opts = Options::fromSysArgs(argc, argv);
@@ -148,7 +159,7 @@ int main(int argc, char *argv[]) {
         CGroupHandler::setLibCGroupLoggerLevel(100000);
     }
 
-    auto task = Task(
+    task = std::make_unique<Task>(
         opts.executable,
         opts.args,
         TaskConstraints{
@@ -168,8 +179,8 @@ int main(int argc, char *argv[]) {
     );
 
     try {
-        task.start();
-        return task.await();
+        task->start();
+        return task->await();
     } catch (SandboxException &e) {
         impl::Message() << "Execution failed: " << e.what() << std::endl;
         return 1;

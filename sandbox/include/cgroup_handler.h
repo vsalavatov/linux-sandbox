@@ -31,6 +31,8 @@ public:
     void loadFromKernel();
     void propagateToKernel();
 
+    void disown();
+
 private:
     cgroup_controller* getController_(const char* name);
 
