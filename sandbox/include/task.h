@@ -5,6 +5,7 @@
 #include <string>
 #include <filesystem>
 #include <memory>
+#include <thread>
 
 #include "task_constraints.h"
 #include "run_audit.h"
@@ -40,14 +41,12 @@ protected:
     void watcher_();
     void clone_();
     void setNiceness_();
+    void limitTime_();
     void prepareMntns_();
     void prepareProcfs_();
     void prepareUserns_(pid_t pid);
     void configureCGroup_();
     void cleanup_();
-
-    void setRealUser_();
-    void setEffectiveUser_();
 
     static std::string generateTaskId_();
 
@@ -67,6 +66,8 @@ protected:
     pid_t taskPid_;
     const bool watcherVerbose_;
     bool interrupted_;
+
+    std::unique_ptr<std::thread> timeLimitKillerThread_;
 
     friend int impl::execCmd(void*);
     friend int impl::execWatcher(void*);

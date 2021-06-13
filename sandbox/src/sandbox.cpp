@@ -81,7 +81,10 @@ struct Options {
                 }
             };
             if (arg == "-t" || arg == "--time-limit") {
-                throw SandboxException("unsupported argument: " + arg);
+                double limit;
+                data >> limit;
+                onReadFail("a numeric argument (whole number of seconds)");
+                opts.timeLimit = limit;
             } else if (arg == "-m" || arg == "--memory-limit") {
                 size_t limit;
                 data >> limit;

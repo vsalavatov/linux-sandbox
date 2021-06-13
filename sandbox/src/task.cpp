@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <sys/prctl.h>
 #include <syscall.h>
 #include <iostream>
 #include <random>
@@ -32,6 +33,7 @@ Task::Task(std::filesystem::path executable, std::vector<std::string> args, Task
     , initPid_{0}
     , taskPid_{0}
     , interrupted_{false}
+    , timeLimitKillerThread_{nullptr}
 {
 }
 
@@ -78,6 +80,7 @@ void Task::start() {
     configureCGroup_();
     prepareImage_();
     startWatcher_();
+    limitTime_();
     cgroupHandler_->attachTask(initPid_);
     setNiceness_();
     prepareUserns_(initPid_);
@@ -221,6 +224,22 @@ void Task::setNiceness_() {
         if (ret == -1) {
             throw SandboxError("failed to set niceness: "s + strerror(errno));
         }
+    }
+}
+
+void Task::limitTime_() {
+    if (constraints_.maxRealTimeSeconds) {
+        pid_t pid = fork();
+        if (pid) return;
+        cgroupHandler_->disown();
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+        using namespace std::chrono;
+        std::this_thread::sleep_for(milliseconds(static_cast<uint64_t>(*constraints_.maxRealTimeSeconds * 1000)));
+        impl::Message() << "process has exceeded its time limit";
+        if (auto res = kill(initPid_, SIGKILL); res) {
+            impl::Message() << "(out if time) failed to send SIGKILL: " << std::strerror(errno);
+        }
+        exit(0);
     }
 }
 
