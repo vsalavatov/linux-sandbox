@@ -20,7 +20,7 @@ public:
     Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints);
     virtual ~Task() = default;
 
-    void start();
+    void prepare();
     void cancel();
     void await();
     void exec();
@@ -28,14 +28,13 @@ public:
     RunAudit getAudit();
 
 protected:
-    void prepare_();
     void unshare_();
     void clone_();
     void prepareMntns_(std::string rootfs);
     void prepareProcfs_();
     void prepareUserns_();
     void configureCGroup_();
-    
+
     static std::string generateTaskId_();
 
     const std::string taskId_;

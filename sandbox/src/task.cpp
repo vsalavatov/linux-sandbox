@@ -29,12 +29,6 @@ Task::Task(std::filesystem::path executable, std::vector<std::string> args, Task
 {
 }
 
-void Task::start() {
-    if (pipe(pipefd_) < 0)
-        throw SandboxError("failed to create pipe: "s + strerror(errno));
-    prepare_();
-}
-
 void Task::cancel() {
     throw SandboxError("not implemented");
 }
@@ -62,9 +56,9 @@ static int execcmd(void* arg) {
     return 0;
 }
 
-void Task::prepare_() {
+void Task::prepare() {
     if (pipe(pipefd_) < 0)
-        throw SandboxError("Failed to create pipe: " + strerror(errno));
+        throw SandboxError("failed to create pipe: " + strerror(errno));
     configureCGroup_();
     clone_();
     cgroupHandler_->attachTask(pid_);
