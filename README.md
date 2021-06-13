@@ -19,3 +19,8 @@
     $ mkdir cgroup-freezer
     $ sudo mount -t cgroup -ofreezer none cgroup-freezer/ 
     ```
+    
+### Tests 
+```bash
+$ ./build.sh
+```
