@@ -15,7 +15,8 @@ namespace sandbox
 {
 
 namespace impl {
-    int execcmd(void *arg);
+    int execCmd(void *arg);
+    int execWatcher(void *arg);
 
     struct Message {
         Message(std::string intro = "(Sandbox) ");
@@ -27,7 +28,7 @@ namespace impl {
 class Task {
 public:
     Task() = delete;
-    Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints);
+    Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints, bool watcherVerbose=false);
     virtual ~Task() = default;
 
     void start();
@@ -40,11 +41,13 @@ protected:
     void exec_();
     void unshare_();
     void prepareImage_();
+    void startWatcher_();
+    void watcher_();
     void clone_();
     void setNiceness_();
     void prepareMntns_();
     void prepareProcfs_();
-    void prepareUserns_();
+    void prepareUserns_(pid_t pid);
     void configureCGroup_();
 
     void setRealUser_();
@@ -62,10 +65,13 @@ protected:
 
     std::unique_ptr<CGroupHandler> cgroupHandler_;
 
-    int pipefd_[2];
-    pid_t pid_; // todo this is an ad-hoc thingie
+    int main2WatcherPipefd_[2];
+    int watcher2ExecPipefd_[2];
+    pid_t initPid_;
+    const bool watcherVerbose_;
 
-    friend int impl::execcmd(void*);
+    friend int impl::execCmd(void*);
+    friend int impl::execWatcher(void*);
 };
 
 } // namespace sandbox

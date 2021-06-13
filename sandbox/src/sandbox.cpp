@@ -17,6 +17,7 @@ struct Options {
     "   [--no-freezer]\n"
     "   [--new-network]\n"
     "   [--libcgroup-verbose]\n"
+    "   [--watcher-verbose]\n"
     "   [-i|--fs-image <path> [-a|--add <path-from>:<path-to>]...]\n"
     "   [-w|--work-dir <path>]\n"
     "   [-u|--uid <uid>]\n"
@@ -30,6 +31,7 @@ struct Options {
     std::optional<std::size_t> maxForks;
     bool newNetwork = false;
     bool libcgroupVerbose = false;
+    bool watcherVerbose = false;
     bool enableFreezer = true;
     std::optional<std::filesystem::path> fsImage;
     std::filesystem::path workDir = ".";
@@ -51,6 +53,10 @@ struct Options {
             }
             if (arg == "--libcgroup-verbose") {
                 opts.libcgroupVerbose = true;
+                continue;
+            }
+            if (arg == "--watcher-verbose") {
+                opts.watcherVerbose = true;
                 continue;
             }
             if (arg == "--no-freezer") {
@@ -157,14 +163,15 @@ int main(int argc, char *argv[]) {
             opts.fileMapping,
             opts.uid,
             opts.gid
-        }
+        },
+        opts.watcherVerbose
     );
 
     try {
         task.start();
         task.await();
     } catch (SandboxException &e) {
-        std::cout << "Execution failed: " << e.what() << std::endl;
+        impl::Message() << "Execution failed: " << e.what() << std::endl;
         return 1;
     }
 
