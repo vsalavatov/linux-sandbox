@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
     );
 
     try {
-        task.start();
+        task.prepare();
         task.await();
     } catch (SandboxException &e) {
         std::cout << "Execution failed: " << e.what() << std::endl;

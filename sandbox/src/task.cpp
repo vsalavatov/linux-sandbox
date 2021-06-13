@@ -52,13 +52,18 @@ void Task::await() { // this is an ad-hod impl
 
 static int execcmd(void* arg) {
     Task *task = ((Task*)arg);
-    task->exec();
+    try {
+        task->exec();
+    } catch (SandboxException &e) {
+        std::cerr << e.what() << std::endl;
+    }
     return 0;
 }
 
 void Task::prepare() {
     if (pipe(pipefd_) < 0)
         throw SandboxError("failed to create pipe: " + strerror(errno));
+    unshare_();
     configureCGroup_();
     clone_();
     cgroupHandler_->attachTask(pid_);
@@ -80,7 +85,7 @@ void Task::unshare_() {
 }
 
 void Task::clone_() {
-    int flags = SIGCHLD | CLONE_NEWUSER;
+    int flags = SIGCHLD | CLONE_NEWUSER | CLONE_NEWNS;
     pid_ = clone(execcmd, cmd_stack + STACKSIZE, flags, this);
     if (pid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
@@ -195,8 +200,6 @@ void Task::exec() {
     for (auto i = 0; i < args_.size(); i++) {
         argv[1 + i] = args_[i].c_str();
     }
-
-    cgroupHandler_->attach();
 
     prepareMntns_("../rootfs");
     auto res = execvp(executable_.c_str(), const_cast<char* const*>(argv.data()));
