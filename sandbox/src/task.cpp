@@ -57,14 +57,14 @@ void Task::await() { // this is an ad-hod impl
             throw SandboxException("failed to await the task: "s + std::strerror(errno));
         }
         if (WIFEXITED(status)) {
-            std::cerr << "exited with code: " << WEXITSTATUS(status) << std::endl;
+            impl::Message() << "exited with code: " << WEXITSTATUS(status) << std::endl;
         }
         if (WIFSIGNALED(status)) {
-            std::cerr << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")"
+            impl::Message() << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")"
                       << std::endl;
         }
         if (WIFSTOPPED(status)) {
-            std::cerr << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")"
+            impl::Message() << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")"
                       << std::endl;
         }
     }
