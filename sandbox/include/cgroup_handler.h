@@ -26,6 +26,7 @@ public:
 
     void create();
     void attach();
+    void attachTask(pid_t pid);
 
     void loadFromKernel();
     void propagateToKernel();

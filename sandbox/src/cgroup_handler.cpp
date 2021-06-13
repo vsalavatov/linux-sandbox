@@ -119,6 +119,12 @@ void CGroupHandler::attach() {
     }
 }
 
+void CGroupHandler::attachTask(pid_t pid) { 
+    if (auto ret = cgroup_attach_task_pid(cg_, pid); ret) {
+        throw SandboxError("failed to attach process to cgroup: " + cgroup_strerror(ret));
+    }
+}
+
 void CGroupHandler::loadFromKernel() {
     if (auto ret = cgroup_get_cgroup(cg_); ret) {
         throw SandboxError("failed to read cgroup data from kernel: " + cgroup_strerror(ret));
