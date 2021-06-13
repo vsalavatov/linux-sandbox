@@ -9,6 +9,8 @@
 #include <fstream>
 #include <random>
 
+#define STACKSIZE (1024*1024)
+static char cmd_stack[STACKSIZE];
 
 using namespace std::string_literals;
 
@@ -27,18 +29,6 @@ Task::Task(std::filesystem::path executable, std::vector<std::string> args, Task
 
 void Task::start() {
     prepare_();
-
-    int pid = fork();
-    if (pid < 0) {
-        throw SandboxError("failed to fork: "s + std::strerror(errno));
-    }
-    if (pid != 0) { // parent
-        pid_ = pid;
-        return;
-    }
-    // child
-    exec_();
-    // started
 }
 
 void Task::cancel() {
@@ -62,17 +52,32 @@ void Task::await() { // this is an ad-hod impl
     }
 }
 
-void Task::prepare_() {
-    unshare_();
-    configure_cgroup_();
+static int execcmd(void* arg) {
+    Task *task = ((Task*)arg);
+    task->exec_();
+    return 1;
 }
 
-void Task::unshare_() {
-    int flags = CLONE_NEWCGROUP | CLONE_NEWPID | CLONE_NEWIPC;
+void Task::prepare_() {
+    if (pipe(pipefd) < 0)
+        throw SandboxError("Failed to create pipe: " + strerror(errno));
+    clone_();
+    configure_cgroup_();
+    if (write(pipefd[1], "OK", 2) != 2)
+        throw SandboxError("failed to write to pipe: " + strerror(errno));
+    if (close(pipefd[1]))
+        throw SandboxError("failed to close pipe: " + strerror(errno));
+}
+
+void Task::clone_() {
+    int flags = SIGCHLD | CLONE_NEWCGROUP | CLONE_NEWPID | CLONE_NEWIPC;
     if (constraints_.newNetwork) {
         flags |= CLONE_NEWNET;
     }
-    unshare(flags);
+    pid_ = clone(execcmd, cmd_stack + STACKSIZE, flags, this);
+    if (pid_ == -1)
+        throw SandboxError("failed to clone: " + strerror(errno));
+
 }
 
 void Task::configure_cgroup_() {
@@ -91,6 +96,9 @@ void Task::configure_cgroup_() {
 }
 
 void Task::exec_() {
+    char buf[2];
+    if (read(pipefd[0], buf, 2) != 2)
+        throw SandboxError("failed to read from pipe: " + strerror(errno));
     if (constraints_.niceness) {
         int ret = setpriority(PRIO_PROCESS, 0, *constraints_.niceness);
         if (ret == -1) {

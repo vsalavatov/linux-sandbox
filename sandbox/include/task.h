@@ -23,14 +23,14 @@ public:
     void start();
     void cancel();
     void await();
+    void exec_();
 
     RunAudit getAudit();
 
 protected:
     void prepare_();
-    void unshare_();
+    void clone_();
     void configure_cgroup_();
-    void exec_();
 
     static std::string generateTaskId_();
 
@@ -44,6 +44,7 @@ protected:
     std::unique_ptr<CGroupHandler> cgroupHandler_;
     
     pid_t pid_; // todo this is an ad-hoc thingie
+    int pipefd[2];
 };
 
 } // namespace sandbox

@@ -2,6 +2,7 @@
 #include "exceptions.h"
 
 #include <unistd.h>
+#include <iostream>
 
 namespace sandbox
 {
