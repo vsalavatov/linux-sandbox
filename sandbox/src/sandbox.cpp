@@ -19,6 +19,7 @@ struct Options {
     "   [--libcgroup-verbose]\n"
     "   [--watcher-verbose]\n"
     "   [-i|--fs-image <path> [-a|--add <path-from>:<path-to>]...]\n"
+    "   [-r|--cleanup-fs-image-dir]\n"
     "   [-w|--work-dir <path>]\n"
     "   [-u|--uid <uid>]\n"
     "   [-g|--gid <gid>]\n";
@@ -33,6 +34,7 @@ struct Options {
     bool libcgroupVerbose = false;
     bool watcherVerbose = false;
     bool enableFreezer = true;
+    bool cleanupImageDir = false;
     std::optional<std::filesystem::path> fsImage;
     std::filesystem::path workDir = ".";
     std::vector<TaskConstraints::FileMapping> fileMapping;
@@ -61,6 +63,10 @@ struct Options {
             }
             if (arg == "--no-freezer") {
                 opts.enableFreezer = false;
+                continue;
+            }
+            if (arg == "-r" || arg == "--cleanup-fs-image-dir") {
+                opts.cleanupImageDir = true;
                 continue;
             }
             if (i >= argc) {
@@ -169,7 +175,11 @@ int main(int argc, char *argv[]) {
 
     try {
         task.start();
-        return task.await();
+        auto retcode = task.await();
+        if (opts.cleanupImageDir) {
+            task.cleanupImageDir();
+        }
+        return retcode;
     } catch (SandboxException &e) {
         impl::Message() << "Execution failed: " << e.what() << std::endl;
         return 1;

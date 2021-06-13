@@ -95,6 +95,13 @@ void Task::unshare_() {
     }
 }
 
+void Task::cleanupImageDir() {
+  if (constraints_.fsImage) {
+    impl::Message() << "Removing: " << root_ << std::endl;
+    std::filesystem::remove_all(root_);
+  }
+}
+
 void Task::prepareImage_() {
     if (constraints_.fsImage == std::nullopt) 
         return;
