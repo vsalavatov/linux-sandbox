@@ -66,6 +66,11 @@ class TestSandbox(unittest.TestCase):
         executable = './build/examples/daemon/daemon'
         output, stderr = self.get_sandbox_output('', executable, '')
         self.assertEqual('0. Parent pid: 2\n1. Child pid: 3\n2. Child pid: 4\nDaemon started.\nDaemon terminated.', output.strip())
+
+    def test_killparent(self):
+        executable = './build/examples/killparent/killparent'
+        output, stderr = self.get_sandbox_output('', executable, '')
+        self.assertEqual('Failed to kill watcher.', output.strip())
     
 if __name__ == '__main__':
     current_directory = os.getcwd()
