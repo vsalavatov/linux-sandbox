@@ -75,7 +75,7 @@ void Task::prepare() {
 }
 
 void Task::unshare_() {
-    int flags = CLONE_NEWCGROUP | CLONE_NEWPID | CLONE_NEWIPC;
+    int flags = CLONE_NEWCGROUP;
     if (constraints_.newNetwork) {
         flags |= CLONE_NEWNET;
     }
@@ -85,7 +85,7 @@ void Task::unshare_() {
 }
 
 void Task::clone_() {
-    int flags = SIGCHLD | CLONE_NEWUSER | CLONE_NEWNS;
+    int flags = SIGCHLD | CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC;
     pid_ = clone(execcmd, cmd_stack + STACKSIZE, flags, this);
     if (pid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
