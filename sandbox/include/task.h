@@ -30,6 +30,7 @@ public:
     int await();
 
     RunAudit getAudit();
+    void cleanupImageDir();
 
 protected:
     void exec_();
@@ -43,6 +44,7 @@ protected:
     void prepareProcfs_();
     void prepareUserns_(pid_t pid);
     void configureCGroup_();
+    void cleanup_();
 
     void setRealUser_();
     void setEffectiveUser_();
