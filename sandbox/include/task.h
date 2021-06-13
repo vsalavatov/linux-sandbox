@@ -23,18 +23,19 @@ public:
     void start();
     void cancel();
     void await();
-    void exec_();
+    void exec();
 
     RunAudit getAudit();
 
 protected:
     void prepare_();
+    void unshare_();
     void clone_();
     void prepareMntns_(std::string rootfs);
     void prepareProcfs_();
     void prepareUserns_();
-    void configure_cgroup_();
-
+    void configureCGroup_();
+    
     static std::string generateTaskId_();
 
     const std::string taskId_;

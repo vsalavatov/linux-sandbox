@@ -31,7 +31,7 @@ Task::Task(std::filesystem::path executable, std::vector<std::string> args, Task
 
 void Task::start() {
     if (pipe(pipefd_) < 0)
-        throw SandboxError("Failed to create pipe: "s + strerror(errno));
+        throw SandboxError("failed to create pipe: "s + strerror(errno));
     prepare_();
 }
 
@@ -58,14 +58,14 @@ void Task::await() { // this is an ad-hod impl
 
 static int execcmd(void* arg) {
     Task *task = ((Task*)arg);
-    task->exec_();
+    task->exec();
     return 0;
 }
 
 void Task::prepare_() {
     if (pipe(pipefd_) < 0)
         throw SandboxError("Failed to create pipe: " + strerror(errno));
-    configure_cgroup_();
+    configureCGroup_();
     clone_();
     cgroupHandler_->attachTask(pid_);
     prepareUserns_();
@@ -75,11 +75,18 @@ void Task::prepare_() {
         throw SandboxError("failed to close pipe: " + strerror(errno));
 }
 
-void Task::clone_() {
-    int flags = SIGCHLD | CLONE_NEWPID | CLONE_NEWIPC | CLONE_NEWUSER;
+void Task::unshare_() {
+    int flags = CLONE_NEWCGROUP | CLONE_NEWPID | CLONE_NEWIPC;
     if (constraints_.newNetwork) {
         flags |= CLONE_NEWNET;
     }
+    if (unshare(flags)) {
+        throw SandboxError("failed to unshare namespaces: "s + std::strerror(errno));
+    }
+}
+
+void Task::clone_() {
+    int flags = SIGCHLD | CLONE_NEWUSER;
     pid_ = clone(execcmd, cmd_stack + STACKSIZE, flags, this);
     if (pid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
@@ -152,10 +159,7 @@ void Task::prepareUserns_() {
     write_file(path, line);
 }
 
-void Task::configure_cgroup_() {
-    if (unshare(CLONE_NEWCGROUP)) {
-        throw SandboxError("failed to unshare cgroup: "s + std::strerror(errno));
-    }
+void Task::configureCGroup_() {
     cgroupHandler_ = std::make_unique<CGroupHandler>(taskId_.c_str());
     
     if (constraints_.maxMemoryBytes) {
@@ -170,7 +174,7 @@ void Task::configure_cgroup_() {
     cgroupHandler_->create();
 }
 
-void Task::exec_() {
+void Task::exec() {
     // We're done once we read something from the pipe.
     char buf[2];
     if (read(pipefd_[0], buf, 2) != 2)
