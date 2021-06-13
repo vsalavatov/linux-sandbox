@@ -4,10 +4,20 @@ on: push
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    env:
+      TZ: America/New_York
+      DEBIAN_FRONTEND: noninteractive
+      CC: gcc-10
+      CXX: g++-10
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:20.04
+      options: "--privileged --cap-add SYS_ADMIN"
     steps:
       - uses: actions/checkout@v1
+      - name: install deps
+        run: apt update && apt install -yq software-properties-common && add-apt-repository ppa:ubuntu-toolchain-r/ppa && apt update && apt install -yq sudo cmake git python3 gcc-10 g++-10 libcgroup-dev libcap-dev
       - name: configure
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-Werror" ..
+        run: mkdir build && cd build && cmake ..
       - name: build
         run: cmake --build build
