@@ -30,6 +30,9 @@ public:
 protected:
     void prepare_();
     void clone_();
+    void prepareMntns_(std::string rootfs);
+    void prepareProcfs_();
+    void prepareUserns_();
     void configure_cgroup_();
 
     static std::string generateTaskId_();
@@ -42,9 +45,9 @@ protected:
     TaskConstraints constraints_;
 
     std::unique_ptr<CGroupHandler> cgroupHandler_;
-    
+
+    int pipefd_[2];
     pid_t pid_; // todo this is an ad-hoc thingie
-    int pipefd[2];
 };
 
 } // namespace sandbox

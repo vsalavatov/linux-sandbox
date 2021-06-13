@@ -5,8 +5,10 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <sys/mount.h>
+#include <syscall.h>
 #include <iostream>
-#include <fstream>
 #include <random>
 
 #define STACKSIZE (1024*1024)
@@ -28,6 +30,8 @@ Task::Task(std::filesystem::path executable, std::vector<std::string> args, Task
 }
 
 void Task::start() {
+    if (pipe(pipefd_) < 0)
+        throw SandboxError("Failed to umount: "s + strerror(errno));
     prepare_();
 }
 
@@ -59,13 +63,14 @@ static int execcmd(void* arg) {
 }
 
 void Task::prepare_() {
-    if (pipe(pipefd) < 0)
+    if (pipe(pipefd_) < 0)
         throw SandboxError("Failed to create pipe: " + strerror(errno));
     clone_();
+    prepareUserns_();
     configure_cgroup_();
-    if (write(pipefd[1], "OK", 2) != 2)
+    if (write(pipefd_[1], "OK", 2) != 2)
         throw SandboxError("failed to write to pipe: " + strerror(errno));
-    if (close(pipefd[1]))
+    if (close(pipefd_[1]))
         throw SandboxError("failed to close pipe: " + strerror(errno));
 }
 
@@ -77,7 +82,73 @@ void Task::clone_() {
     pid_ = clone(execcmd, cmd_stack + STACKSIZE, flags, this);
     if (pid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
+}
 
+void Task::prepareProcfs_() {
+    if (mkdir("/proc", 0555) && errno != EEXIST)
+        throw SandboxException("Failed to mkdir /proc: "s + strerror(errno));
+
+    if (mount("proc", "/proc", "proc", 0, ""))
+        throw SandboxException("Failed to mount proc: "s + strerror(errno));
+}
+
+void Task::prepareMntns_(std::string rootfs) {
+    std::string mnt = rootfs + "_mnt";
+    if (mount(rootfs.c_str(), mnt.c_str(), "ext4", MS_BIND, ""))
+        throw SandboxException("Failed to mount " + rootfs + " at " + mnt + ": " + strerror(errno));
+
+    if (chdir(mnt.c_str()))
+        throw SandboxException("Failed to chdir to rootfs mounted at " + mnt + ": " + strerror(errno));
+
+    std::string put_old = "put_old";
+    if (mkdir(put_old.c_str(), 0777) && errno != EEXIST)
+        throw SandboxException("Failed to mkdir " + put_old + ": " + strerror(errno));
+
+    std::cout << "Current path is " << std::filesystem::current_path() << '\n';
+
+    if (syscall(SYS_pivot_root, ".", put_old.c_str()))
+        throw SandboxException("Failed to pivot_root from . to " + put_old + ": " + strerror(errno));
+
+    if (chdir("/"))
+        throw SandboxException("Failed to chdir to new root: "s + strerror(errno));
+
+    prepareProcfs_();
+
+    if (umount2(put_old.c_str(), MNT_DETACH))
+        throw SandboxException("Failed to umount " + put_old + ": " + strerror(errno));
+}
+
+
+void write_file(char path[100], char line[100]) {
+    FILE *f = fopen(path, "w");
+    if (f == NULL) {
+        throw SandboxError("Failed to open file " + path + " :" + strerror(errno));
+    }
+    if (fwrite(line, 1, strlen(line), f) < 0) {
+        throw SandboxError("Failed to write to file " + path + " :" + strerror(errno));
+    }
+    if (fclose(f) != 0) {
+        throw SandboxError("Failed to close file " + path + " :" + strerror(errno));
+    }
+}
+
+void Task::prepareUserns_() {
+    char path[100];
+    char line[100];
+
+    int uid = 1000;
+
+    sprintf(path, "/proc/%d/uid_map", pid_);
+    sprintf(line, "0 %d 1\n", uid);
+    write_file(path, line);
+
+    sprintf(path, "/proc/%d/setgroups", pid_);
+    sprintf(line, "deny");
+    write_file(path, line);
+
+    sprintf(path, "/proc/%d/gid_map", pid_);
+    sprintf(line, "0 %d 1\n", uid);
+    write_file(path, line);
 }
 
 void Task::configure_cgroup_() {
@@ -96,9 +167,21 @@ void Task::configure_cgroup_() {
 }
 
 void Task::exec_() {
+    // We're done once we read something from the pipe.
     char buf[2];
-    if (read(pipefd[0], buf, 2) != 2)
-        throw SandboxError("failed to read from pipe: " + strerror(errno));
+    if (read(pipefd_[0], buf, 2) != 2)
+        throw SandboxError("Failed to read from pipe: "s + strerror(errno));
+
+    // Assuming, 0 in the current namespace maps to
+    // a non-privileged UID in the parent namespace,
+    // drop superuser privileges if any by enforcing
+    // the exec'ed process runs with UID 0.
+    if (setgid(0) == -1)
+        throw SandboxError("Failed to setgid: "s + strerror(errno));
+    if (setuid(0) == -1)
+        throw SandboxError("Failed to setuid: "s + strerror(errno));
+
+
     if (constraints_.niceness) {
         int ret = setpriority(PRIO_PROCESS, 0, *constraints_.niceness);
         if (ret == -1) {
@@ -113,6 +196,7 @@ void Task::exec_() {
 
     cgroupHandler_->attach();
 
+    prepareMntns_("../rootfs");
     auto res = execvp(executable_.c_str(), const_cast<char* const*>(argv.data()));
     if (res < 0) {
         throw SandboxException("failed to start the task: "s + std::strerror(errno));
