@@ -100,7 +100,7 @@ void Task::prepareProcfs_() {
 }
 
 void Task::prepareMntns_(std::string rootfs) {
-    std::string mnt = rootfs + "_mnt";
+    std::string mnt = rootfs;
     if (mount(rootfs.c_str(), mnt.c_str(), "ext4", MS_BIND, ""))
         throw SandboxError("failed to mount " + rootfs + " at " + mnt + ": " + strerror(errno));
 
