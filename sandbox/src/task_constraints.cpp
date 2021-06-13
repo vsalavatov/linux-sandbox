@@ -12,7 +12,9 @@ TaskConstraints::TaskConstraints(
     bool freezable,
     std::optional<std::filesystem::path> fsImage,
     std::filesystem::path workDir,
-    std::vector<FileMapping> fileMapping
+    std::vector<FileMapping> fileMapping,
+    uid_t uid,
+    gid_t gid
 ) : maxRealTimeSeconds{maxRealTimeSeconds}
   , maxMemoryBytes{maxMemoryBytes}
   , maxForks{maxForks}
@@ -22,6 +24,8 @@ TaskConstraints::TaskConstraints(
   , fsImage{fsImage}
   , workDir{workDir}
   , fileMapping{std::move(fileMapping)}
+  , uid{uid}
+  , gid{gid}
 {}
 
 } // namespace sandbox

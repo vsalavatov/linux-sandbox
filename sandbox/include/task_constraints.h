@@ -25,7 +25,9 @@ public:
         bool freezable,
         std::optional<std::filesystem::path> fsImage,
         std::filesystem::path workDir,
-        std::vector<FileMapping> fileMapping
+        std::vector<FileMapping> fileMapping,
+        uid_t uid,
+        gid_t gid
     );
 
     const std::optional<double> maxRealTimeSeconds;
@@ -39,6 +41,9 @@ public:
     const std::optional<std::filesystem::path> fsImage;
     const std::filesystem::path workDir;
     const std::vector<FileMapping> fileMapping;
+
+    const uid_t uid;
+    const gid_t gid;
     
     // TODO signals ? 
     // TODO other things

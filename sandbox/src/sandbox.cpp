@@ -18,7 +18,9 @@ struct Options {
     "   [--new-network]\n"
     "   [--libcgroup-verbose]\n"
     "   [-i|--fs-image <path> [-a|--add <path-from>:<path-to>]...]\n"
-    "   [-w|--work-dir <path>]\n";
+    "   [-w|--work-dir <path>]\n"
+    "   [-u|--uid <uid>]\n"
+    "   [-g|--gid <gid>]\n";
 
     std::string executable;
     std::vector<std::string> args;
@@ -32,6 +34,8 @@ struct Options {
     std::optional<std::filesystem::path> fsImage;
     std::filesystem::path workDir = ".";
     std::vector<TaskConstraints::FileMapping> fileMapping;
+    uid_t uid = 1000;
+    gid_t gid = 1000;
 
     static Options fromSysArgs(int argc, char *argv[]) {
         Options opts{};
@@ -82,20 +86,33 @@ struct Options {
             } else if (arg == "-i" || arg == "--fs-image") {
                 std::filesystem::path p;
                 data >> p;
+                onReadFail("a path to the container image");
                 opts.fsImage = p;
             } else if (arg == "-w" || arg == "--work-dir") {
                 std::filesystem::path p;
                 data >> p;
+                onReadFail("a path of working directory inside the container (or host fs)");
                 opts.workDir = p;
             } else if (arg == "-a" || arg == "--add") {
                 std::string pp;
                 data >> pp;
+                onReadFail(arg + " expects <path-from>:<path-to>, e.g. ./bin/cmd:/app/cmd");
                 auto it = pp.find(':');
                 if (it == std::string::npos) {
                     throw SandboxException(arg + " expects <path-from>:<path-to>, e.g. ./bin/cmd:/app/cmd");
                 }
                 std::filesystem::path from{pp.substr(0, it)}, to{pp.substr(it + 1)};
                 opts.fileMapping.emplace_back(from, to);
+            } else if (arg == "-u" || arg == "--uid") {
+                uid_t uid;
+                data >> uid;
+                onReadFail("expected uid");
+                opts.uid = uid;
+            } else if (arg == "-g" || arg == "--gid") {
+                uid_t gid;
+                data >> gid;
+                onReadFail("expected gid");
+                opts.gid = gid;
             } else {
                 throw SandboxException("unsupported argument: " + arg);
             }
@@ -137,7 +154,9 @@ int main(int argc, char *argv[]) {
             opts.enableFreezer,
             opts.fsImage,
             opts.workDir,
-            opts.fileMapping
+            opts.fileMapping,
+            opts.uid,
+            opts.gid
         }
     );
 

@@ -130,7 +130,7 @@ void Task::prepareImage_() {
             throw SandboxException("failed to copy "s + m.from.string() + " to "s + (m.to).string() + ": "s + e.what());
         }
     }
-    if (chown(root_.c_str(), 1000, 1000)) {
+    if (chown(root_.c_str(), constraints_.uid, constraints_.gid)) {
         throw SandboxError("failed to chown image: "s + std::strerror(errno));
     }
     impl::Message() << "Image is ready";
@@ -207,8 +207,8 @@ void Task::prepareUserns_() {
     char path[100];
     char line[100];
 
-    uid_t uid = 1000;
-    gid_t gid = 1000;
+    uid_t uid = constraints_.uid;
+    gid_t gid = constraints_.gid;
 
     sprintf(path, "/proc/%d/uid_map", pid_);
     sprintf(line, "0 %d 1\n", uid);
