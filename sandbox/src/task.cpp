@@ -49,7 +49,7 @@ void Task::cancel() {
     throw SandboxError("not implemented");
 }
 
-void Task::await() { 
+int Task::await() { 
     int status;
     auto pid = waitpid(initPid_, &status, 0);
     if (pid < 0) {
@@ -57,6 +57,7 @@ void Task::await() {
     }
     if (WIFEXITED(status)) {
         impl::Message() << "exited with code: " << WEXITSTATUS(status);
+        return WEXITSTATUS(status);
     }
     if (WIFSIGNALED(status)) {
         impl::Message() << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
@@ -64,6 +65,7 @@ void Task::await() {
     if (WIFSTOPPED(status)) {
         impl::Message() << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
     }
+    return 72;
 }
 
 void Task::start() {
@@ -140,6 +142,7 @@ void Task::watcher_() {
     if (close(main2WatcherPipefd_[0])) 
         throw SandboxError("failed to close pipe: "s + strerror(errno));
     clone_();
+    int retcode = 71;
     int status;
     pid_t pid;
     while (true) {
@@ -147,6 +150,9 @@ void Task::watcher_() {
         if (errno == ECHILD) break;
         if (pid < 0) {
             throw SandboxException("(watcher) failed to await the task: "s + std::strerror(errno));
+        }
+        if (pid == taskPid_ && WIFEXITED(status)) {
+            retcode = WEXITSTATUS(status);
         }
         if (WIFEXITED(status) && watcherVerbose_) {
             impl::Message() << "(watcher) pid " << pid << " exited with code: " << WEXITSTATUS(status);
@@ -158,7 +164,7 @@ void Task::watcher_() {
             impl::Message() << "(watcher) pid " << pid << " stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
         }
     }
-    exit(0);
+    exit(retcode);
 }
 
 int impl::execCmd(void* arg) {
@@ -185,8 +191,8 @@ int impl::execWatcher(void* arg) {
 
 void Task::clone_() {
     int flags = SIGCHLD | CLONE_NEWNS | CLONE_NEWIPC;
-    auto pid_ = clone(impl::execCmd, cmd_stack + STACKSIZE, flags, this);
-    if (pid_ == -1)
+    taskPid_ = clone(impl::execCmd, cmd_stack + STACKSIZE, flags, this);
+    if (taskPid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
     // prepareUserns_(pid_);
     if (write(watcher2ExecPipefd_[1], "OK", 2) != 2)

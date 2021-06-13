@@ -33,7 +33,7 @@ public:
 
     void start();
     void cancel();
-    void await();
+    int await();
 
     RunAudit getAudit();
 
@@ -68,6 +68,7 @@ protected:
     int main2WatcherPipefd_[2];
     int watcher2ExecPipefd_[2];
     pid_t initPid_;
+    pid_t taskPid_;
     const bool watcherVerbose_;
 
     friend int impl::execCmd(void*);

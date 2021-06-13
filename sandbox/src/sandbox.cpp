@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
 
     try {
         task.start();
-        task.await();
+        return task.await();
     } catch (SandboxException &e) {
         impl::Message() << "Execution failed: " << e.what() << std::endl;
         return 1;
