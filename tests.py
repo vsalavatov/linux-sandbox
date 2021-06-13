@@ -57,6 +57,11 @@ class TestSandbox(unittest.TestCase):
         finally: 
             os.system('rm -rf test_data')
 
+    def test_time(self):
+        executable = './build/examples/sleep30/sleep30'
+        output, stderr = self.get_sandbox_output('-t 1', executable, '')
+        self.assertIn('(Sandbox) process has exceeded its time limit', stderr)
+
     def test_daemon(self):
         executable = './build/examples/daemon/daemon'
         output, stderr = self.get_sandbox_output('', executable, '')
