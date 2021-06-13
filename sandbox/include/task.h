@@ -5,6 +5,7 @@
 #include <string>
 #include <filesystem>
 #include <memory>
+#include <thread>
 
 #include "task_constraints.h"
 #include "run_audit.h"
@@ -17,13 +18,7 @@ namespace sandbox
 namespace impl {
     int execCmd(void *arg);
     int execWatcher(void *arg);
-
-    struct Message {
-        Message(std::string intro = "(Sandbox) ");
-        ~Message();
-        std::ostream& operator<<(const auto& o);
-    };
-};
+} // namespace impl
 
 class Task {
 public:
@@ -46,14 +41,12 @@ protected:
     void watcher_();
     void clone_();
     void setNiceness_();
+    void limitTime_();
     void prepareMntns_();
     void prepareProcfs_();
     void prepareUserns_(pid_t pid);
     void configureCGroup_();
     void cleanup_();
-
-    void setRealUser_();
-    void setEffectiveUser_();
 
     static std::string generateTaskId_();
 
@@ -72,6 +65,9 @@ protected:
     pid_t initPid_;
     pid_t taskPid_;
     const bool watcherVerbose_;
+    bool interrupted_;
+
+    std::unique_ptr<std::thread> timeLimitKillerThread_;
 
     friend int impl::execCmd(void*);
     friend int impl::execWatcher(void*);

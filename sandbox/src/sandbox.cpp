@@ -1,7 +1,9 @@
 #include <iostream>
+#include <signal.h>
 
 #include "task.h"
 #include "exceptions.h"
+#include "msg.h"
 
 using namespace sandbox;
 
@@ -79,7 +81,10 @@ struct Options {
                 }
             };
             if (arg == "-t" || arg == "--time-limit") {
-                throw SandboxException("unsupported argument: " + arg);
+                double limit;
+                data >> limit;
+                onReadFail("a numeric argument (whole number of seconds)");
+                opts.timeLimit = limit;
             } else if (arg == "-m" || arg == "--memory-limit") {
                 size_t limit;
                 data >> limit;
@@ -138,7 +143,16 @@ struct Options {
     }
 };
 
+static std::unique_ptr<Task> task;
+void sighandler(int sig) {
+    if (task) {
+        task->cancel();
+    }
+}
+
 int main(int argc, char *argv[]) {
+    signal(SIGINT, sighandler);
+
     Options opts;
     try{
         opts = Options::fromSysArgs(argc, argv);
@@ -154,7 +168,7 @@ int main(int argc, char *argv[]) {
         CGroupHandler::setLibCGroupLoggerLevel(100000);
     }
 
-    auto task = Task(
+    task = std::make_unique<Task>(
         opts.executable,
         opts.args,
         TaskConstraints{
@@ -174,10 +188,10 @@ int main(int argc, char *argv[]) {
     );
 
     try {
-        task.start();
-        auto retcode = task.await();
-        if (opts.cleanupImageDir) {
-            task.cleanupImageDir();
+        task->start();
+        auto retcode = task->await();
+        if (opts.cleanupImageDir && opts.fsImage) {
+            task->cleanupImageDir();
         }
         return retcode;
     } catch (SandboxException &e) {

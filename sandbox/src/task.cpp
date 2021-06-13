@@ -1,5 +1,6 @@
 #include "task.h"
 #include "exceptions.h"
+#include "msg.h"
 
 #include <sys/resource.h>
 #include <cstring>
@@ -7,6 +8,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <sys/prctl.h>
 #include <syscall.h>
 #include <iostream>
 #include <random>
@@ -20,20 +22,6 @@ using namespace std::string_literals;
 namespace sandbox
 {
 
-impl::Message::Message(std::string intro) {
-    std::cerr << "\u001b[33;1m" << intro;
-}
-
-impl::Message::~Message() {
-    std::cerr << "\u001b[0m" << std::endl;
-}
-
-std::ostream& impl::Message::operator<<(const auto& o) {
-    std::cerr << o;
-    return std::cerr;
-}
-
-
 Task::Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints, bool watcherVerbose)
     : taskId_{generateTaskId_()}
     , statusFile_{taskId_}
@@ -42,11 +30,27 @@ Task::Task(std::filesystem::path executable, std::vector<std::string> args, Task
     , constraints_{std::move(constraints)}
     , root_{"/"}
     , watcherVerbose_{watcherVerbose}
+    , initPid_{0}
+    , taskPid_{0}
+    , interrupted_{false}
+    , timeLimitKillerThread_{nullptr}
 {
 }
 
 void Task::cancel() {
-    throw SandboxError("not implemented");
+    if (!initPid_) {
+        return;
+    }
+    if (interrupted_) {
+        if (auto res = kill(initPid_, SIGKILL); res) {
+            impl::Message() << "failed to send SIGKILL: " << std::strerror(errno);
+        }
+    } else {
+        if (auto res = kill(initPid_, SIGINT); res) {
+            impl::Message() << "failed to send SIGINT: " << std::strerror(errno);
+        }
+        interrupted_ = true;
+    }
 }
 
 int Task::await() { 
@@ -76,6 +80,7 @@ void Task::start() {
     configureCGroup_();
     prepareImage_();
     startWatcher_();
+    limitTime_();
     cgroupHandler_->attachTask(initPid_);
     setNiceness_();
     prepareUserns_(initPid_);
@@ -96,10 +101,10 @@ void Task::unshare_() {
 }
 
 void Task::cleanupImageDir() {
-  if (constraints_.fsImage) {
-    impl::Message() << "Removing: " << root_ << std::endl;
-    std::filesystem::remove_all(root_);
-  }
+    if (constraints_.fsImage && constraints_.fsImage != "/") {
+        impl::Message() << "Removing: " << root_ << std::endl;
+        std::filesystem::remove_all(root_);
+    }
 }
 
 void Task::prepareImage_() {
@@ -143,6 +148,11 @@ void Task::startWatcher_() {
 }
 
 void Task::watcher_() {
+    signal(SIGINT, [](int a) -> void {
+        static bool interrupted = false;
+        if (interrupted) return;
+        kill(-1, SIGINT);
+    });
     char buf[2];
     if (read(main2WatcherPipefd_[0], buf, 2) != 2)
         throw SandboxError("failed to read from pipe: "s + strerror(errno));
@@ -188,6 +198,7 @@ int impl::execCmd(void* arg) {
 int impl::execWatcher(void* arg) {
     Task *task = ((Task*)arg);
     try {
+        task->cgroupHandler_->disown();
         task->watcher_();
     } catch (SandboxException &e) {
         impl::Message() << e.what();
@@ -201,7 +212,6 @@ void Task::clone_() {
     taskPid_ = clone(impl::execCmd, cmd_stack + STACKSIZE, flags, this);
     if (taskPid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
-    // prepareUserns_(pid_);
     if (write(watcher2ExecPipefd_[1], "OK", 2) != 2)
         throw SandboxError("failed to write to pipe: " + strerror(errno));
     if (close(watcher2ExecPipefd_[1]))
@@ -214,6 +224,22 @@ void Task::setNiceness_() {
         if (ret == -1) {
             throw SandboxError("failed to set niceness: "s + strerror(errno));
         }
+    }
+}
+
+void Task::limitTime_() {
+    if (constraints_.maxRealTimeSeconds) {
+        pid_t pid = fork();
+        if (pid) return;
+        cgroupHandler_->disown();
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+        using namespace std::chrono;
+        std::this_thread::sleep_for(milliseconds(static_cast<uint64_t>(*constraints_.maxRealTimeSeconds * 1000)));
+        impl::Message() << "process has exceeded its time limit";
+        if (auto res = kill(initPid_, SIGKILL); res) {
+            impl::Message() << "(out if time) failed to send SIGKILL: " << std::strerror(errno);
+        }
+        exit(0);
     }
 }
 
@@ -254,8 +280,7 @@ void Task::prepareMntns_() {
         throw SandboxError("failed to chdir to working directory: " + strerror(errno));
 }
 
-
-void write_file(char path[100], char line[100]) {
+static void write_file(char *path, char* line) {
     FILE *f = fopen(path, "w");
     if (f == NULL) {
         throw SandboxError("failed to open file " + path + " :" + std::strerror(errno));
