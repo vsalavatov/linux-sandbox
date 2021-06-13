@@ -104,9 +104,9 @@ void Task::unshare_() {
 }
 
 void Task::prepareImage_() {
-    impl::Message() << "Preparing image...";
     if (constraints_.fsImage == std::nullopt) 
         return;
+    impl::Message() << "Preparing image...";
 
     root_ = std::filesystem::absolute(taskId_ + ".d/");
     auto copyOpts = std::filesystem::copy_options{std::filesystem::copy_options::recursive};
