@@ -8,6 +8,6 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: configure
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-Werror" ..
+        run: sudo apt-get install libcgroup-dev && mkdir build && cd build && cmake ..
       - name: build
         run: cmake --build build
