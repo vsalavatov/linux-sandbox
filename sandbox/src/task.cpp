@@ -34,13 +34,14 @@ std::ostream& impl::Message::operator<<(const auto& o) {
 }
 
 
-Task::Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints)
+Task::Task(std::filesystem::path executable, std::vector<std::string> args, TaskConstraints constraints, bool watcherVerbose)
     : taskId_{generateTaskId_()}
     , statusFile_{taskId_}
     , executable_{std::move(executable)}
     , args_{std::move(args)}
     , constraints_{std::move(constraints)}
     , root_{"/"}
+    , watcherVerbose_{watcherVerbose}
 {
 }
 
@@ -72,43 +73,14 @@ void Task::start() {
     unshare_();
     configureCGroup_();
     prepareImage_();
-    if (startWatcher_()) { // watcher
-        char buf[2];
-        if (read(main2WatcherPipefd_[0], buf, 2) != 2)
-            throw SandboxError("failed to read from pipe: "s + strerror(errno));
-        if (close(main2WatcherPipefd_[0])) 
-            throw SandboxError("failed to close pipe: "s + strerror(errno));
-        impl::Message() << "watcher!";
-        clone_();
-        impl::Message() << "watcher! after clone";
-        int status;
-        pid_t pid;
-        while (true) {
-            pid = waitpid(-1, &status, 0);
-            impl::Message() << "(watcher) PID: " << pid;
-            if (errno == ECHILD) break;
-            if (pid < 0) {
-                throw SandboxException("(watcher) failed to await the task: "s + std::strerror(errno));
-            }
-            if (WIFEXITED(status)) {
-                impl::Message() << "(watcher) exited with code: " << WEXITSTATUS(status);
-            }
-            if (WIFSIGNALED(status)) {
-                impl::Message() << "(watcher) terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
-            }
-            if (WIFSTOPPED(status)) {
-                impl::Message() << "(watcher) stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
-            }
-        }
-        exit(0);
-    } else {
-        cgroupHandler_->attachTask(initPid_);
-        setNiceness_();
-        if (write(main2WatcherPipefd_[1], "OK", 2) != 2)
-            throw SandboxError("failed to write to pipe: " + strerror(errno));
-        if (close(main2WatcherPipefd_[1]))
-            throw SandboxError("failed to close pipe: " + strerror(errno));
-    }
+    startWatcher_();
+    cgroupHandler_->attachTask(initPid_);
+    setNiceness_();
+    prepareUserns_(initPid_);
+    if (write(main2WatcherPipefd_[1], "OK", 2) != 2)
+        throw SandboxError("failed to write to pipe: " + strerror(errno));
+    if (close(main2WatcherPipefd_[1]))
+        throw SandboxError("failed to close pipe: " + strerror(errno));
 }
 
 void Task::unshare_() {
@@ -154,22 +126,42 @@ void Task::prepareImage_() {
     impl::Message() << "Image is ready";
 }
 
-bool Task::startWatcher_() { // returns (this thread is watcher)
-    initPid_ = fork();
-    if (initPid_ < 0) {
-        throw SandboxError("failed to fork watcher process: "s + std::strerror(errno));
-    }
-    if (initPid_ > 0) { // main thread
-        return false;
-    }
-    if (unshare(CLONE_NEWPID)) {
-        throw SandboxError("failed to unshare watcher's PID namespace: "s + std::strerror(errno));
-    }
-    // child
-    return true;
+void Task::startWatcher_() {
+    int flags = SIGCHLD | CLONE_NEWPID | CLONE_NEWUSER;
+    initPid_ = clone(impl::execWatcher, cmd_stack + STACKSIZE, flags, this);
+    if (initPid_ == -1)
+        throw SandboxError("failed to start watcher: " + strerror(errno));
 }
 
-int impl::execcmd(void* arg) {
+void Task::watcher_() {
+    char buf[2];
+    if (read(main2WatcherPipefd_[0], buf, 2) != 2)
+        throw SandboxError("failed to read from pipe: "s + strerror(errno));
+    if (close(main2WatcherPipefd_[0])) 
+        throw SandboxError("failed to close pipe: "s + strerror(errno));
+    clone_();
+    int status;
+    pid_t pid;
+    while (true) {
+        pid = waitpid(-1, &status, 0);
+        if (errno == ECHILD) break;
+        if (pid < 0) {
+            throw SandboxException("(watcher) failed to await the task: "s + std::strerror(errno));
+        }
+        if (WIFEXITED(status) && watcherVerbose_) {
+            impl::Message() << "(watcher) pid " << pid << " exited with code: " << WEXITSTATUS(status);
+        }
+        if (WIFSIGNALED(status) && watcherVerbose_) {
+            impl::Message() << "(watcher) pid " << pid << " terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
+        }
+        if (WIFSTOPPED(status) && watcherVerbose_) {
+            impl::Message() << "(watcher) pid " << pid << " stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
+        }
+    }
+    exit(0);
+}
+
+int impl::execCmd(void* arg) {
     Task *task = ((Task*)arg);
     try {
         task->exec_();
@@ -180,12 +172,23 @@ int impl::execcmd(void* arg) {
     return 0;
 }
 
+int impl::execWatcher(void* arg) {
+    Task *task = ((Task*)arg);
+    try {
+        task->watcher_();
+    } catch (SandboxException &e) {
+        impl::Message() << e.what();
+        return 70;
+    }
+    return 0;
+}
+
 void Task::clone_() {
-    int flags = SIGCHLD | CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWIPC;
-    auto pid_ = clone(impl::execcmd, cmd_stack + STACKSIZE, flags, this);
+    int flags = SIGCHLD | CLONE_NEWNS | CLONE_NEWIPC;
+    auto pid_ = clone(impl::execCmd, cmd_stack + STACKSIZE, flags, this);
     if (pid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
-    prepareUserns_(pid_);
+    // prepareUserns_(pid_);
     if (write(watcher2ExecPipefd_[1], "OK", 2) != 2)
         throw SandboxError("failed to write to pipe: " + strerror(errno));
     if (close(watcher2ExecPipefd_[1]))
