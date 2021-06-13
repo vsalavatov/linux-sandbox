@@ -9,7 +9,7 @@ add_executable(sandbox
     src/msg.cpp
 )
 
-target_link_libraries(sandbox PRIVATE cgroup)
+target_link_libraries(sandbox PRIVATE cgroup cap)
 target_include_directories(sandbox PUBLIC include/)
 
 add_custom_command(TARGET sandbox POST_BUILD

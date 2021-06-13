@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/mount.h>
 #include <sys/prctl.h>
+#include <sys/capability.h>
 #include <syscall.h>
 #include <iostream>
 #include <random>
@@ -243,6 +244,25 @@ void Task::limitTime_() {
     }
 }
 
+void Task::clearCapabilities_() {
+    cap_t cap = cap_get_proc();
+    if (!cap) {
+        throw SandboxError("failed to get capabilities");
+    }
+    if (cap_clear(cap)) {
+        throw SandboxError("failed to clear capabilities: "s + std::strerror(errno));
+    }
+    if (cap_set_proc(cap)) {
+        throw SandboxError("failed to set capabilities: "s + std::strerror(errno));
+    }
+    if (cap_free(cap)) {
+        throw SandboxError("failed to free capabilities: "s + std::strerror(errno));
+    }
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+        throw SandboxError("failed to restrict process (no new privs): "s + std::strerror(errno));
+    }
+}
+
 void Task::prepareProcfs_() {
     if (mkdir("/proc", 0555) && errno != EEXIST)
         throw SandboxError("failed to mkdir /proc: "s + strerror(errno));
@@ -341,6 +361,9 @@ void Task::exec_() {
         throw SandboxError("failed to setuid: "s + strerror(errno));
 
     prepareMntns_();
+
+    if (!constraints_.preserveCapabilities)
+        clearCapabilities_();
 
     std::vector<const char*> argv(1 + args_.size() + 1);
     argv[0] = executable_.c_str();

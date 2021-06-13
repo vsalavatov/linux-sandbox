@@ -23,6 +23,7 @@ public:
         std::optional<int> niceness,
         bool newNetwork,
         bool freezable,
+        bool preserveCapabilities,
         std::optional<std::filesystem::path> fsImage,
         std::filesystem::path workDir,
         std::vector<FileMapping> fileMapping,
@@ -37,6 +38,7 @@ public:
 
     const bool newNetwork;
     const bool freezable;
+    const bool preserveCapabilities;
 
     const std::optional<std::filesystem::path> fsImage;
     const std::filesystem::path workDir;

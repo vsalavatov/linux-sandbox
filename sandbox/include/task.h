@@ -42,6 +42,7 @@ protected:
     void clone_();
     void setNiceness_();
     void limitTime_();
+    void clearCapabilities_();
     void prepareMntns_();
     void prepareProcfs_();
     void prepareUserns_(pid_t pid);

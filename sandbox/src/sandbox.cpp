@@ -18,6 +18,7 @@ struct Options {
     "   [-n|--niceness <value from [-20, 19]>]\n"
     "   [--no-freezer]\n"
     "   [--new-network]\n"
+    "   [--preserve-capabilities]\n"
     "   [--libcgroup-verbose]\n"
     "   [--watcher-verbose]\n"
     "   [-i|--fs-image <path> [-a|--add <path-from>:<path-to>]...]\n"
@@ -36,6 +37,7 @@ struct Options {
     bool libcgroupVerbose = false;
     bool watcherVerbose = false;
     bool enableFreezer = true;
+    bool preserveCapabilities = false;
     bool cleanupImageDir = false;
     std::optional<std::filesystem::path> fsImage;
     std::filesystem::path workDir = ".";
@@ -65,6 +67,10 @@ struct Options {
             }
             if (arg == "--no-freezer") {
                 opts.enableFreezer = false;
+                continue;
+            }
+            if (arg == "--preserve-capabilities") {
+                opts.preserveCapabilities = true;
                 continue;
             }
             if (arg == "-r" || arg == "--cleanup-fs-image-dir") {
@@ -178,6 +184,7 @@ int main(int argc, char *argv[]) {
             opts.niceness, 
             opts.newNetwork, 
             opts.enableFreezer,
+            opts.preserveCapabilities,
             opts.fsImage,
             opts.workDir,
             opts.fileMapping,

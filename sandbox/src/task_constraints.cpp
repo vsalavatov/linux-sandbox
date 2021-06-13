@@ -10,6 +10,7 @@ TaskConstraints::TaskConstraints(
     std::optional<int> niceness,
     bool newNetwork,
     bool freezable,
+    bool preserveCapabilities,
     std::optional<std::filesystem::path> fsImage,
     std::filesystem::path workDir,
     std::vector<FileMapping> fileMapping,
@@ -21,6 +22,7 @@ TaskConstraints::TaskConstraints(
   , niceness{niceness}
   , newNetwork{newNetwork}
   , freezable{freezable}
+  , preserveCapabilities{preserveCapabilities}
   , fsImage{fsImage}
   , workDir{workDir}
   , fileMapping{std::move(fileMapping)}
