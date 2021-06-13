@@ -12,6 +12,7 @@
 
 static void skeleton_daemon()
 {
+    std::cout << "0. Parent pid: " << getpid() << std::endl;
     pid_t pid;
 
     /* Fork off the parent process */
@@ -22,8 +23,10 @@ static void skeleton_daemon()
         exit(EXIT_FAILURE);
 
     /* Success: Let the parent terminate */
-    if (pid > 0)
+    if (pid > 0) {
+        std::cout << "1. Child pid: " << pid << std::endl;
         exit(EXIT_SUCCESS);
+    }
 
     /* On success: The child process becomes session leader */
     if (setsid() < 0)
@@ -42,9 +45,10 @@ static void skeleton_daemon()
         exit(EXIT_FAILURE);
 
     /* Success: Let the parent terminate */
-    if (pid > 0)
+    if (pid > 0) {
+        std::cout << "2. Child pid: " << pid << std::endl;
         exit(EXIT_SUCCESS);
-
+    }
 }
 
 int main()

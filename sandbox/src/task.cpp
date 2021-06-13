@@ -48,54 +48,67 @@ void Task::cancel() {
     throw SandboxError("not implemented");
 }
 
-void Task::await() { // this is an ad-hod impl
+void Task::await() { 
     int status;
-    pid_t pid;
-    while ((pid = waitpid(-1, &status, 0)) > 0) {
-        std::cout << pid << std::endl;
-        if (pid < 0) {
-            throw SandboxException("failed to await the task: "s + std::strerror(errno));
-        }
-        if (WIFEXITED(status)) {
-            std::cerr << "exited with code: " << WEXITSTATUS(status) << std::endl;
-        }
-        if (WIFSIGNALED(status)) {
-            std::cerr << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")"
-                      << std::endl;
-        }
-        if (WIFSTOPPED(status)) {
-            std::cerr << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")"
-                      << std::endl;
-        }
+    auto pid = waitpid(initPid_, &status, 0);
+    if (pid < 0) {
+        throw SandboxException("failed to await the task: "s + std::strerror(errno));
     }
-}
-
-int impl::execcmd(void* arg) {
-    Task *task = ((Task*)arg);
-    try {
-        task->exec_();
-    } catch (SandboxException &e) {
-        impl::Message() << e.what();
-        return 69;
+    if (WIFEXITED(status)) {
+        impl::Message() << "exited with code: " << WEXITSTATUS(status);
     }
-    return 0;
+    if (WIFSIGNALED(status)) {
+        impl::Message() << "terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
+    }
+    if (WIFSTOPPED(status)) {
+        impl::Message() << "stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
+    }
 }
 
 void Task::start() {
     impl::Message() << "Starting task " << taskId_ << "...";
-    if (pipe(pipefd_) < 0)
+    if (pipe(main2WatcherPipefd_) < 0 || pipe(watcher2ExecPipefd_) < 0)
         throw SandboxError("failed to create pipe: " + strerror(errno));
     unshare_();
     configureCGroup_();
     prepareImage_();
-    clone_();
-    cgroupHandler_->attachTask(pid_);
-    setNiceness_();
-    prepareUserns_();
-    if (write(pipefd_[1], "OK", 2) != 2)
-        throw SandboxError("failed to write to pipe: " + strerror(errno));
-    if (close(pipefd_[1]))
-        throw SandboxError("failed to close pipe: " + strerror(errno));
+    if (startWatcher_()) { // watcher
+        char buf[2];
+        if (read(main2WatcherPipefd_[0], buf, 2) != 2)
+            throw SandboxError("failed to read from pipe: "s + strerror(errno));
+        if (close(main2WatcherPipefd_[0])) 
+            throw SandboxError("failed to close pipe: "s + strerror(errno));
+        impl::Message() << "watcher!";
+        clone_();
+        impl::Message() << "watcher! after clone";
+        int status;
+        pid_t pid;
+        while (true) {
+            pid = waitpid(-1, &status, 0);
+            impl::Message() << "(watcher) PID: " << pid;
+            if (errno == ECHILD) break;
+            if (pid < 0) {
+                throw SandboxException("(watcher) failed to await the task: "s + std::strerror(errno));
+            }
+            if (WIFEXITED(status)) {
+                impl::Message() << "(watcher) exited with code: " << WEXITSTATUS(status);
+            }
+            if (WIFSIGNALED(status)) {
+                impl::Message() << "(watcher) terminated by signal: " << WTERMSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
+            }
+            if (WIFSTOPPED(status)) {
+                impl::Message() << "(watcher) stopped by signal: " << WSTOPSIG(status) << " (" << strsignal(WTERMSIG(status)) << ")";
+            }
+        }
+        exit(0);
+    } else {
+        cgroupHandler_->attachTask(initPid_);
+        setNiceness_();
+        if (write(main2WatcherPipefd_[1], "OK", 2) != 2)
+            throw SandboxError("failed to write to pipe: " + strerror(errno));
+        if (close(main2WatcherPipefd_[1]))
+            throw SandboxError("failed to close pipe: " + strerror(errno));
+    }
 }
 
 void Task::unshare_() {
@@ -141,16 +154,47 @@ void Task::prepareImage_() {
     impl::Message() << "Image is ready";
 }
 
+bool Task::startWatcher_() { // returns (this thread is watcher)
+    initPid_ = fork();
+    if (initPid_ < 0) {
+        throw SandboxError("failed to fork watcher process: "s + std::strerror(errno));
+    }
+    if (initPid_ > 0) { // main thread
+        return false;
+    }
+    if (unshare(CLONE_NEWPID)) {
+        throw SandboxError("failed to unshare watcher's PID namespace: "s + std::strerror(errno));
+    }
+    // child
+    return true;
+}
+
+int impl::execcmd(void* arg) {
+    Task *task = ((Task*)arg);
+    try {
+        task->exec_();
+    } catch (SandboxException &e) {
+        impl::Message() << e.what();
+        return 69;
+    }
+    return 0;
+}
+
 void Task::clone_() {
-    int flags = SIGCHLD | CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC;
-    pid_ = clone(impl::execcmd, cmd_stack + STACKSIZE, flags, this);
+    int flags = SIGCHLD | CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWIPC;
+    auto pid_ = clone(impl::execcmd, cmd_stack + STACKSIZE, flags, this);
     if (pid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
+    prepareUserns_(pid_);
+    if (write(watcher2ExecPipefd_[1], "OK", 2) != 2)
+        throw SandboxError("failed to write to pipe: " + strerror(errno));
+    if (close(watcher2ExecPipefd_[1]))
+        throw SandboxError("failed to close pipe: " + strerror(errno));
 }
 
 void Task::setNiceness_() {
     if (constraints_.niceness) {
-        int ret = setpriority(PRIO_PROCESS, pid_, *constraints_.niceness);
+        int ret = setpriority(PRIO_PROCESS, initPid_, *constraints_.niceness);
         if (ret == -1) {
             throw SandboxError("failed to set niceness: "s + strerror(errno));
         }
@@ -208,22 +252,22 @@ void write_file(char path[100], char line[100]) {
     }
 }
 
-void Task::prepareUserns_() {
+void Task::prepareUserns_(pid_t pid) {
     char path[100];
     char line[100];
 
     uid_t uid = constraints_.uid;
     gid_t gid = constraints_.gid;
 
-    sprintf(path, "/proc/%d/uid_map", pid_);
+    sprintf(path, "/proc/%d/uid_map", pid);
     sprintf(line, "0 %d 1\n", uid);
     write_file(path, line);
 
-    sprintf(path, "/proc/%d/setgroups", pid_);
+    sprintf(path, "/proc/%d/setgroups", pid);
     sprintf(line, "deny");
     write_file(path, line);
 
-    sprintf(path, "/proc/%d/gid_map", pid_);
+    sprintf(path, "/proc/%d/gid_map", pid);
     sprintf(line, "0 %d 1\n", gid);
     write_file(path, line);
 }
@@ -245,8 +289,10 @@ void Task::configureCGroup_() {
 
 void Task::exec_() {
     char buf[2];
-    if (read(pipefd_[0], buf, 2) != 2)
+    if (read(watcher2ExecPipefd_[0], buf, 2) != 2)
         throw SandboxError("failed to read from pipe: "s + strerror(errno));
+    if (close(watcher2ExecPipefd_[0])) 
+        throw SandboxError("failed to close pipe: "s + strerror(errno));
 
     if (setgid(0) == -1)
         throw SandboxError("failed to setgid: "s + strerror(errno));

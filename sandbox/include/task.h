@@ -40,11 +40,12 @@ protected:
     void exec_();
     void unshare_();
     void prepareImage_();
+    bool startWatcher_();
     void clone_();
     void setNiceness_();
     void prepareMntns_();
     void prepareProcfs_();
-    void prepareUserns_();
+    void prepareUserns_(pid_t pid);
     void configureCGroup_();
 
     void setRealUser_();
@@ -62,8 +63,9 @@ protected:
 
     std::unique_ptr<CGroupHandler> cgroupHandler_;
 
-    int pipefd_[2];
-    pid_t pid_; // todo this is an ad-hoc thingie
+    int main2WatcherPipefd_[2];
+    int watcher2ExecPipefd_[2];
+    pid_t initPid_;
 
     friend int impl::execcmd(void*);
 };

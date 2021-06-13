@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
         task.start();
         task.await();
     } catch (SandboxException &e) {
-        std::cout << "Execution failed: " << e.what() << std::endl;
+        impl::Message() << "Execution failed: " << e.what() << std::endl;
         return 1;
     }
 
