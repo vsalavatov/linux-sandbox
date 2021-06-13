@@ -14,8 +14,9 @@
 #include <iostream>
 #include <random>
 
-#define STACKSIZE (64*1024*1024)
-static char cmd_stack[STACKSIZE];
+constexpr size_t watcherStackSize = 8*1024*1024;
+static char watcherStack[watcherStackSize];
+
 
 using namespace std::string_literals;
 
@@ -143,7 +144,7 @@ void Task::prepareImage_() {
 
 void Task::startWatcher_() {
     int flags = SIGCHLD | CLONE_NEWPID | CLONE_NEWUSER;
-    initPid_ = clone(impl::execWatcher, cmd_stack + STACKSIZE, flags, this);
+    initPid_ = clone(impl::execWatcher, watcherStack + watcherStackSize, flags, this);
     if (initPid_ == -1)
         throw SandboxError("failed to start watcher: " + strerror(errno));
 }
@@ -210,7 +211,12 @@ int impl::execWatcher(void* arg) {
 
 void Task::clone_() {
     int flags = SIGCHLD | CLONE_NEWNS | CLONE_NEWIPC;
-    taskPid_ = clone(impl::execCmd, cmd_stack + STACKSIZE, flags, this);
+    errno = 0;
+    char* stack = reinterpret_cast<char*>(malloc(constraints_.stackSize));
+    if (!stack && errno) {
+        throw SandboxError("failed to allocate memory for task's stack: " + strerror(errno));
+    }
+    taskPid_ = clone(impl::execCmd, stack + constraints_.stackSize, flags, this);
     if (taskPid_ == -1)
         throw SandboxError("failed to clone: " + strerror(errno));
     if (write(watcher2ExecPipefd_[1], "OK", 2) != 2)

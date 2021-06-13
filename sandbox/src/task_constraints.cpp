@@ -6,6 +6,7 @@ namespace sandbox
 TaskConstraints::TaskConstraints(
     std::optional<double> maxRealTimeSeconds,
     std::optional<std::size_t> maxMemoryBytes, 
+    std::size_t stackSize,
     std::optional<std::size_t> maxForks,
     std::optional<int> niceness,
     bool newNetwork,
@@ -18,6 +19,7 @@ TaskConstraints::TaskConstraints(
     gid_t gid
 ) : maxRealTimeSeconds{maxRealTimeSeconds}
   , maxMemoryBytes{maxMemoryBytes}
+  , stackSize{stackSize}
   , maxForks{maxForks}
   , niceness{niceness}
   , newNetwork{newNetwork}

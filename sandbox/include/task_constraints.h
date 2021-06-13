@@ -19,6 +19,7 @@ public:
     TaskConstraints(
         std::optional<double> maxRealTimeSeconds,
         std::optional<std::size_t> maxMemoryBytes, 
+        std::size_t stackSize,
         std::optional<std::size_t> maxForks,
         std::optional<int> niceness,
         bool newNetwork,
@@ -33,6 +34,7 @@ public:
 
     const std::optional<double> maxRealTimeSeconds;
     const std::optional<std::size_t> maxMemoryBytes;
+    const std::size_t stackSize;
     const std::optional<std::size_t> maxForks;
     const std::optional<int> niceness;
 
